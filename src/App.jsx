@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
 import {
   Plus, ShoppingCart, Car, Home, Coffee, Zap, Film, Shirt, BookOpen, MoreHorizontal,
   Briefcase, Gift, TrendingUp, TrendingDown, Trash2, X, ChevronLeft, ChevronRight,
@@ -1031,25 +1031,59 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
     [accounts, txs, fx]
   );
 
+  const [chartView, setChartView] = useState('all'); // 'past' | 'all' | 'future'
+  const chartRange = chartView === 'past' ? { from: -5, to: 0 }
+                   : chartView === 'future' ? { from: 1, to: 6 }
+                   : { from: -5, to: 6 };
+
   const now = new Date();
   const allMonths = useMemo(() => {
     const arr = [];
-    for (let i = -5; i <= 6; i++) {
+    for (let i = chartRange.from; i <= chartRange.to; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       arr.push({ y: d.getFullYear(), m: d.getMonth(), isForecast: i > 0 });
     }
     return arr;
-  }, [now.getFullYear(), now.getMonth()]);
+  }, [now.getFullYear(), now.getMonth(), chartRange.from, chartRange.to]);
 
   const flows = useMemo(() => {
     const raw = projectMonthlyFlows(allMonths, accounts, txs, recurring, fx.rates);
-    return raw.map((f, i) => ({ ...f, isForecast: allMonths[i].isForecast }));
+    // Starting balance for the window = balance at the end of the month BEFORE allMonths[0]
+    const first = allMonths[0];
+    const prevMonthEnd = toDateStr(new Date(first.y, first.m, 0));
+    const today = todayStr();
+    let startBalance;
+    if (cmpDate(prevMonthEnd, today) <= 0) {
+      startBalance = getSettledBalanceTRY(accounts, txs, fx.rates, prevMonthEnd);
+    } else {
+      const settled = getSettledBalanceTRY(accounts, txs, fx.rates, today);
+      let delta = 0;
+      for (const acc of accounts) {
+        const items = forecastRecurringInRange(recurring, acc.id, addDays(today, 1), prevMonthEnd, fx.rates);
+        for (const it of items) {
+          delta += it.type === 'gelir' ? it.amountTRY : -it.amountTRY;
+        }
+      }
+      startBalance = settled + delta;
+    }
+    let running = startBalance;
+    return raw.map((f, i) => {
+      running += f.income - f.expense;
+      return { ...f, isForecast: allMonths[i].isForecast, closingBalance: running };
+    });
   }, [allMonths, accounts, txs, recurring, fx]);
 
-  // Current month is at index 5 (offsets -5..+6)
-  const thisMonth = flows[5] || { income: 0, expense: 0, net: 0 };
-  // First forecast bar — used as x for the "Tahmin" reference line
-  const forecastBoundary = flows[6]?.fullLabel;
+  // Current-month stat card uses the "all" or "past" flows where index of current month differs.
+  // Compute current month independently so it doesn't shift with chartView.
+  const thisMonthFlow = useMemo(() => {
+    const cm = [{ y: now.getFullYear(), m: now.getMonth() }];
+    const [r] = projectMonthlyFlows(cm, accounts, txs, recurring, fx.rates);
+    return r || { income: 0, expense: 0, net: 0 };
+  }, [now.getFullYear(), now.getMonth(), accounts, txs, recurring, fx]);
+  const thisMonth = thisMonthFlow;
+
+  // "Tahmin" vertical line only makes sense in the combined 12-month view
+  const forecastBoundary = chartView === 'all' ? flows.find(f => f.isForecast)?.fullLabel : null;
 
   // Category breakdown — current month, expenses
   const monthStart = toDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -1105,46 +1139,101 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
       </section>
 
       <section className="bg-white rounded-2xl border border-stone-200 p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold text-stone-800">Son 6 ay · Tahmin 6 ay</div>
-          <div className="text-xs text-stone-500 flex items-center gap-2">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" />Gelir</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-400" />Gider</span>
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div className="font-semibold text-stone-800">
+            {chartView === 'past' ? 'Son 6 ay' : chartView === 'future' ? 'Gelecek 6 ay' : 'Son 6 ay · Tahmin 6 ay'}
+          </div>
+          <div className="flex bg-stone-100 rounded-full p-0.5 text-xs">
+            {[
+              { id: 'past', label: 'Geçmiş 6' },
+              { id: 'all', label: '12 ay' },
+              { id: 'future', label: 'Gelecek 6' },
+            ].map(v => (
+              <button
+                key={v.id}
+                onClick={() => setChartView(v.id)}
+                className={`px-2.5 py-1 rounded-full transition ${chartView === v.id ? 'bg-white text-stone-800 shadow-sm font-medium' : 'text-stone-500'}`}
+              >
+                {v.label}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="h-56">
+        <div className="flex items-center gap-3 text-[11px] text-stone-500 mb-1">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" />Gelir</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-400" />Gider</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-violet-600" />Bakiye</span>
+        </div>
+        <div className="h-64">
           <ResponsiveContainer>
-            <BarChart data={flows} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+            <ComposedChart data={flows} margin={{ top: 12, right: 4, left: 0, bottom: 8 }}>
               <CartesianGrid stroke="#f1ede6" vertical={false} />
-              <XAxis dataKey="fullLabel" tick={{ fontSize: 10, fill: '#78716c' }} axisLine={false} tickLine={false} interval={0} />
-              <YAxis tick={{ fontSize: 11, fill: '#78716c' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => Math.round(v / 1000) + 'k'} />
+              <XAxis
+                dataKey="fullLabel"
+                tick={{ angle: -35, textAnchor: 'end', fontSize: 10, fill: '#78716c' }}
+                axisLine={false}
+                tickLine={false}
+                interval={0}
+                height={42}
+              />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 10, fill: '#78716c' }}
+                axisLine={false}
+                tickLine={false}
+                width={38}
+                tickFormatter={(v) => Math.round(v / 1000) + 'k'}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 10, fill: '#7C3AED' }}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+                tickFormatter={(v) => Math.round(v / 1000) + 'k'}
+              />
               <Tooltip
-                formatter={(v, n) => [formatMoney(v, 'TRY'), n === 'income' ? 'Gelir' : 'Gider']}
+                formatter={(v, n) => {
+                  const label = n === 'income' ? 'Gelir' : n === 'expense' ? 'Gider' : 'Bakiye';
+                  return [formatMoney(v, 'TRY'), label];
+                }}
                 labelFormatter={(label, payload) => {
                   const f = payload?.[0]?.payload;
                   return f?.isForecast ? `${label} · tahmin` : label;
                 }}
                 contentStyle={{ borderRadius: 10, border: '1px solid #e7e5e4', fontSize: 12 }}
               />
+              <ReferenceLine yAxisId="right" y={0} stroke="#dc2626" strokeDasharray="2 4" />
               {forecastBoundary && (
                 <ReferenceLine
+                  yAxisId="left"
                   x={forecastBoundary}
                   stroke="#a8a29e"
                   strokeDasharray="3 3"
                   label={{ value: 'Tahmin', position: 'top', fontSize: 10, fill: '#78716c' }}
                 />
               )}
-              <Bar dataKey="income" radius={[4, 4, 0, 0]}>
+              <Bar yAxisId="left" dataKey="income" radius={[4, 4, 0, 0]}>
                 {flows.map((f, i) => (
                   <Cell key={`in-${i}`} fill={f.isForecast ? '#A8C88660' : '#A8C886'} />
                 ))}
               </Bar>
-              <Bar dataKey="expense" radius={[4, 4, 0, 0]}>
+              <Bar yAxisId="left" dataKey="expense" radius={[4, 4, 0, 0]}>
                 {flows.map((f, i) => (
                   <Cell key={`ex-${i}`} fill={f.isForecast ? '#DC8A6E60' : '#DC8A6E'} />
                 ))}
               </Bar>
-            </BarChart>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="closingBalance"
+                stroke="#7C3AED"
+                strokeWidth={2}
+                dot={{ r: 3, fill: '#7C3AED', strokeWidth: 0 }}
+                activeDot={{ r: 5 }}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </section>
