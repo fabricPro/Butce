@@ -1032,35 +1032,24 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
   );
 
   const now = new Date();
-  const months = useMemo(() => {
+  const allMonths = useMemo(() => {
     const arr = [];
-    for (let i = -5; i <= 0; i++) {
+    for (let i = -5; i <= 6; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      arr.push({ y: d.getFullYear(), m: d.getMonth() });
+      arr.push({ y: d.getFullYear(), m: d.getMonth(), isForecast: i > 0 });
     }
     return arr;
   }, [now.getFullYear(), now.getMonth()]);
 
-  const flows = useMemo(
-    () => projectMonthlyFlows(months, accounts, txs, recurring, fx.rates),
-    [months, accounts, txs, recurring, fx]
-  );
+  const flows = useMemo(() => {
+    const raw = projectMonthlyFlows(allMonths, accounts, txs, recurring, fx.rates);
+    return raw.map((f, i) => ({ ...f, isForecast: allMonths[i].isForecast }));
+  }, [allMonths, accounts, txs, recurring, fx]);
 
-  const futureMonths = useMemo(() => {
-    const arr = [];
-    for (let i = 1; i <= 3; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      arr.push({ y: d.getFullYear(), m: d.getMonth() });
-    }
-    return arr;
-  }, [now.getFullYear(), now.getMonth()]);
-  const futureFlows = useMemo(
-    () => projectMonthlyFlows(futureMonths, accounts, txs, recurring, fx.rates),
-    [futureMonths, accounts, txs, recurring, fx]
-  );
-
-  // Current month (so far)
-  const thisMonth = flows[flows.length - 1] || { income: 0, expense: 0, net: 0 };
+  // Current month is at index 5 (offsets -5..+6)
+  const thisMonth = flows[5] || { income: 0, expense: 0, net: 0 };
+  // First forecast bar — used as x for the "Tahmin" reference line
+  const forecastBoundary = flows[6]?.fullLabel;
 
   // Category breakdown — current month, expenses
   const monthStart = toDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -1117,46 +1106,48 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
 
       <section className="bg-white rounded-2xl border border-stone-200 p-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold text-stone-800">Son 6 ay</div>
-          <div className="text-xs text-stone-500">TRY</div>
+          <div className="font-semibold text-stone-800">Son 6 ay · Tahmin 6 ay</div>
+          <div className="text-xs text-stone-500 flex items-center gap-2">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" />Gelir</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-400" />Gider</span>
+          </div>
         </div>
-        <div className="h-48">
+        <div className="h-56">
           <ResponsiveContainer>
-            <BarChart data={flows}>
+            <BarChart data={flows} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="#f1ede6" vertical={false} />
-              <XAxis dataKey="fullLabel" tick={{ fontSize: 11, fill: '#78716c' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="fullLabel" tick={{ fontSize: 10, fill: '#78716c' }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: '#78716c' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => Math.round(v / 1000) + 'k'} />
               <Tooltip
                 formatter={(v, n) => [formatMoney(v, 'TRY'), n === 'income' ? 'Gelir' : 'Gider']}
+                labelFormatter={(label, payload) => {
+                  const f = payload?.[0]?.payload;
+                  return f?.isForecast ? `${label} · tahmin` : label;
+                }}
                 contentStyle={{ borderRadius: 10, border: '1px solid #e7e5e4', fontSize: 12 }}
               />
-              <Bar dataKey="income" fill="#A8C886" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#DC8A6E" radius={[4, 4, 0, 0]} />
+              {forecastBoundary && (
+                <ReferenceLine
+                  x={forecastBoundary}
+                  stroke="#a8a29e"
+                  strokeDasharray="3 3"
+                  label={{ value: 'Tahmin', position: 'top', fontSize: 10, fill: '#78716c' }}
+                />
+              )}
+              <Bar dataKey="income" radius={[4, 4, 0, 0]}>
+                {flows.map((f, i) => (
+                  <Cell key={`in-${i}`} fill={f.isForecast ? '#A8C88660' : '#A8C886'} />
+                ))}
+              </Bar>
+              <Bar dataKey="expense" radius={[4, 4, 0, 0]}>
+                {flows.map((f, i) => (
+                  <Cell key={`ex-${i}`} fill={f.isForecast ? '#DC8A6E60' : '#DC8A6E'} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
       </section>
-
-      {futureFlows.length > 0 && (
-        <section className="bg-white rounded-2xl border border-stone-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold text-stone-800">Önümüzdeki 3 ay tahmini</div>
-            <div className="text-xs text-stone-500">Tekrarlardan</div>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {futureFlows.map(f => (
-              <div key={`${f.y}-${f.m}`} className="rounded-xl bg-stone-50 p-3">
-                <div className="text-xs text-stone-500">{f.fullLabel}</div>
-                <div className="text-sm text-emerald-700 mt-1">+{formatNum(f.income)}</div>
-                <div className="text-sm text-rose-700">−{formatNum(f.expense)}</div>
-                <div className={`text-xs mt-1 font-medium ${f.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  Net: {formatMoney(f.net, 'TRY', true)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       <section className="grid md:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border border-stone-200 p-4">
