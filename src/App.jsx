@@ -1082,6 +1082,13 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
   }, [now.getFullYear(), now.getMonth(), accounts, txs, recurring, fx]);
   const thisMonth = thisMonthFlow;
 
+  // Balance carried over from the previous month (this month's starting position).
+  // Negative = devren borç; positive = devren bakiye.
+  const carryoverBalance = useMemo(() => {
+    const prevMonthEnd = toDateStr(new Date(now.getFullYear(), now.getMonth(), 0));
+    return getSettledBalanceTRY(accounts, txs, fx.rates, prevMonthEnd);
+  }, [now.getFullYear(), now.getMonth(), accounts, txs, fx]);
+
   // "Tahmin" vertical line only makes sense in the combined 12-month view
   const forecastBoundary = chartView === 'all' ? flows.find(f => f.isForecast)?.fullLabel : null;
 
@@ -1132,7 +1139,13 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
         </div>
       </section>
 
-      <section className="grid grid-cols-3 gap-3">
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          label={carryoverBalance < 0 ? 'Devren borç' : 'Devren bakiye'}
+          value={formatMoney(carryoverBalance, 'TRY', true)}
+          Icon={carryoverBalance < 0 ? AlertTriangle : Repeat}
+          tone={carryoverBalance < 0 ? 'rose' : carryoverBalance > 0 ? 'emerald' : 'amber'}
+        />
         <StatCard label="Bu ay gelir" value={formatMoney(thisMonth.income, 'TRY')} Icon={ArrowDownRight} tone="emerald" />
         <StatCard label="Bu ay gider" value={formatMoney(thisMonth.expense, 'TRY')} Icon={ArrowUpRight} tone="rose" />
         <StatCard label="Bu ay net" value={formatMoney(thisMonth.net, 'TRY', true)} Icon={TrendingUp} tone={thisMonth.net >= 0 ? 'emerald' : 'rose'} />
