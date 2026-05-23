@@ -5,8 +5,11 @@ import {
   Briefcase, Gift, TrendingUp, TrendingDown, Trash2, X, ChevronLeft, ChevronRight,
   ArrowUpRight, ArrowDownRight, Wallet, Landmark, CreditCard, Pencil,
   RefreshCw, Globe, AlertTriangle, Check, ArrowLeftRight,
-  Repeat, Calendar, PauseCircle, PlayCircle, Info, Layers, Activity, Target
+  Repeat, Calendar, PauseCircle, PlayCircle, Info, Layers, Activity, Target,
+  Mail, LogOut
 } from 'lucide-react';
+import { supabase, supabaseConfigured } from './supabase.js';
+import { api } from './api.js';
 
 /* ============================================================
    CONSTANTS
@@ -633,7 +636,125 @@ function getAccountBalanceTRY(account, txs, fxRates, asOfDate = null) {
 const INITIAL_FX = { rates: FX_FALLBACK, source: 'loading', fetchedAt: 0 };
 
 export default function App() {
+  const [authReady, setAuthReady] = useState(false);
+  const [session, setSession] = useState(null);
+
+  // Subscribe to auth
+  useEffect(() => {
+    if (!supabaseConfigured) { setAuthReady(true); return; }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session || null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => setSession(sess || null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  if (!authReady) return <LoadingScreen />;
+  if (!supabaseConfigured) return <ConfigErrorScreen />;
+  if (!session) return <LoginScreen />;
+  return <AppCore session={session} />;
+}
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-stone-50 text-stone-500">
+      <div className="flex items-center gap-3">
+        <RefreshCw className="w-5 h-5 animate-spin" /> Yükleniyor…
+      </div>
+    </div>
+  );
+}
+
+function ConfigErrorScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+      <div className="max-w-md text-center text-stone-700">
+        <AlertTriangle className="w-10 h-10 text-amber-600 mx-auto mb-3" />
+        <h1 className="text-lg font-semibold mb-2">Supabase ayarlanmamış</h1>
+        <p className="text-sm text-stone-500">
+          <code>VITE_SUPABASE_URL</code> ve <code>VITE_SUPABASE_ANON_KEY</code> environment değişkenleri yok.
+          GitHub repo Settings → Secrets and variables → Actions altında ekleyip yeniden deploy edin.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle'); // 'idle' | 'sending' | 'sent' | 'error'
+  const [errMsg, setErrMsg] = useState('');
+
+  const send = async (e) => {
+    e?.preventDefault?.();
+    if (!email || status === 'sending') return;
+    setStatus('sending'); setErrMsg('');
+    const redirect = window.location.origin + import.meta.env.BASE_URL;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirect },
+    });
+    if (error) { setStatus('error'); setErrMsg(error.message); return; }
+    setStatus('sent');
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-stone-200 p-6 shadow-sm">
+        <div className="text-center mb-5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white mx-auto mb-3 flex items-center justify-center">
+            <Wallet className="w-6 h-6" />
+          </div>
+          <h1 className="text-lg font-semibold text-stone-800">Bütçe</h1>
+          <p className="text-xs text-stone-500 mt-1">E-posta adresinle giriş linkini al</p>
+        </div>
+
+        {status === 'sent' ? (
+          <div className="text-center text-sm space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <Mail className="w-5 h-5" />
+            </div>
+            <div className="text-stone-700">
+              <span className="font-medium">{email}</span> adresine giriş linki gönderildi.
+            </div>
+            <div className="text-xs text-stone-500">Linke tıkladıktan sonra bu sayfaya geri yönlendirileceksin.</div>
+            <button onClick={() => setStatus('idle')} className="text-xs text-amber-700 hover:underline">
+              Farklı e-posta dene
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={send} className="space-y-3">
+            <input
+              type="email"
+              autoFocus
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="adin@ornek.com"
+              className="w-full px-3 py-2.5 rounded-lg border border-stone-200 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={status === 'sending'}
+              className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-sm font-medium flex items-center justify-center gap-2"
+            >
+              {status === 'sending' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              {status === 'sending' ? 'Gönderiliyor…' : 'Giriş linki gönder'}
+            </button>
+            {status === 'error' && (
+              <div className="text-xs text-rose-700 bg-rose-50 rounded-lg p-2">{errMsg}</div>
+            )}
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AppCore({ session }) {
   const [booted, setBooted] = useState(false);
+  const [bootError, setBootError] = useState(null);
   const [view, setView] = useState({ name: 'dashboard' });
   const [accounts, setAccounts] = useState([]);
   const [txs, setTxs] = useState([]);
@@ -643,40 +764,44 @@ export default function App() {
   const [modal, setModal] = useState(null); // { kind, payload }
   const [toast, setToast] = useState(null);
 
-  // Bootstrap
+  // Bootstrap: load all data from Supabase + FX from local cache
   useEffect(() => {
     (async () => {
-      await runMigrations();
-      const [accs, t, r, b, fxData] = await Promise.all([
-        loadList(STORAGE_KEYS.accounts),
-        loadList(STORAGE_KEYS.transactions),
-        loadList(STORAGE_KEYS.recurring),
-        loadList(STORAGE_KEYS.budgetGoals),
-        ensureFxRates(false),
-      ]);
+      try {
+        const [accs, t, r, b, fxData] = await Promise.all([
+          api.listAccounts(),
+          api.listTransactions(),
+          api.listRules(),
+          api.listGoals(),
+          ensureFxRates(false),
+        ]);
 
-      // Materialize recurring rules up to today
-      const { newTxs, updatedRules } = materializeRules(r, accs, fxData.rates);
-      let txsAfter = t;
-      let rulesAfter = updatedRules;
-      if (newTxs.length > 0) {
-        txsAfter = [...t, ...newTxs];
-        await sSet(STORAGE_KEYS.transactions, txsAfter);
-        console.log(`[recurring] ${newTxs.length} işlem üretildi`);
-      }
-      // Persist updated lastGeneratedDate
-      if (JSON.stringify(rulesAfter) !== JSON.stringify(r)) {
-        await sSet(STORAGE_KEYS.recurring, rulesAfter);
-      }
+        // Materialize recurring rules up to today
+        const { newTxs, updatedRules } = materializeRules(r, accs, fxData.rates);
+        let txsAfter = t;
+        let rulesAfter = updatedRules;
+        if (newTxs.length > 0) {
+          await api.bulkInsertTransactions(newTxs);
+          txsAfter = [...newTxs, ...t];
+        }
+        // Persist any rule whose lastGeneratedDate advanced
+        const changedRules = rulesAfter.filter((nr, i) => JSON.stringify(nr) !== JSON.stringify(r[i]));
+        for (const cr of changedRules) {
+          await api.upsertRule(cr);
+        }
 
-      setAccounts(accs);
-      setTxs(txsAfter);
-      setRecurring(rulesAfter);
-      setBudgets(b);
-      setFx(fxData);
-      setBooted(true);
+        setAccounts(accs);
+        setTxs(txsAfter);
+        setRecurring(rulesAfter);
+        setBudgets(b);
+        setFx(fxData);
+        setBooted(true);
+      } catch (e) {
+        console.error('bootstrap', e);
+        setBootError(e?.message || String(e));
+      }
     })();
-  }, []);
+  }, [session.user.id]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -689,23 +814,19 @@ export default function App() {
     setToast({ message, kind });
   }, []);
 
-  /* ---------- Persistence helpers ---------- */
-  const saveAccounts = useCallback(async (next) => {
-    setAccounts(next);
-    await sSet(STORAGE_KEYS.accounts, next);
-  }, []);
-  const saveTxs = useCallback(async (next) => {
-    setTxs(next);
-    await sSet(STORAGE_KEYS.transactions, next);
-  }, []);
-  const saveRecurring = useCallback(async (next) => {
-    setRecurring(next);
-    await sSet(STORAGE_KEYS.recurring, next);
-  }, []);
-  const saveBudgets = useCallback(async (next) => {
-    setBudgets(next);
-    await sSet(STORAGE_KEYS.budgetGoals, next);
-  }, []);
+  /* ---------- Error-aware wrapper ---------- */
+  const runApi = useCallback(async (fn, optimistic, rollback) => {
+    optimistic?.();
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      console.error(e);
+      rollback?.();
+      flashToast('Kaydedilemedi: ' + (e.message || e), 'warn');
+      return false;
+    }
+  }, [flashToast]);
 
   /* ---------- FX refresh ---------- */
   const refreshFx = useCallback(async (force = true) => {
@@ -721,10 +842,12 @@ export default function App() {
   /* ---------- CRUD: Accounts ---------- */
   const upsertAccount = useCallback(async (acc) => {
     const exists = accounts.some(a => a.id === acc.id);
-    const next = exists ? accounts.map(a => a.id === acc.id ? acc : a) : [...accounts, acc];
-    await saveAccounts(next);
-    flashToast(exists ? 'Hesap güncellendi' : 'Hesap eklendi', 'success');
-  }, [accounts, saveAccounts, flashToast]);
+    const ok = await runApi(() => api.upsertAccount(acc));
+    if (ok) {
+      setAccounts(exists ? accounts.map(a => a.id === acc.id ? acc : a) : [...accounts, acc]);
+      flashToast(exists ? 'Hesap güncellendi' : 'Hesap eklendi', 'success');
+    }
+  }, [accounts, runApi, flashToast]);
 
   const deleteAccount = useCallback(async (id) => {
     const hasTxs = txs.some(t => t.accountId === id);
@@ -732,22 +855,30 @@ export default function App() {
       flashToast('Bu hesapta işlem var, önce taşıyın', 'warn');
       return;
     }
-    await saveAccounts(accounts.filter(a => a.id !== id));
-    flashToast('Hesap silindi', 'success');
-  }, [accounts, txs, saveAccounts, flashToast]);
+    const ok = await runApi(() => api.deleteAccount(id));
+    if (ok) {
+      setAccounts(accounts.filter(a => a.id !== id));
+      flashToast('Hesap silindi', 'success');
+    }
+  }, [accounts, txs, runApi, flashToast]);
 
   /* ---------- CRUD: Transactions ---------- */
   const upsertTx = useCallback(async (tx) => {
     const exists = txs.some(t => t.id === tx.id);
-    const next = exists ? txs.map(t => t.id === tx.id ? tx : t) : [...txs, tx];
-    await saveTxs(next);
-    flashToast(exists ? 'İşlem güncellendi' : 'İşlem eklendi', 'success');
-  }, [txs, saveTxs, flashToast]);
+    const ok = await runApi(() => api.upsertTransaction(tx));
+    if (ok) {
+      setTxs(exists ? txs.map(t => t.id === tx.id ? tx : t) : [...txs, tx]);
+      flashToast(exists ? 'İşlem güncellendi' : 'İşlem eklendi', 'success');
+    }
+  }, [txs, runApi, flashToast]);
 
   const deleteTx = useCallback(async (id) => {
-    await saveTxs(txs.filter(t => t.id !== id));
-    flashToast('İşlem silindi', 'success');
-  }, [txs, saveTxs, flashToast]);
+    const ok = await runApi(() => api.deleteTransaction(id));
+    if (ok) {
+      setTxs(txs.filter(t => t.id !== id));
+      flashToast('İşlem silindi', 'success');
+    }
+  }, [txs, runApi, flashToast]);
 
   const transferBetween = useCallback(async ({ fromId, toId, amount, date, note }) => {
     const from = getAccount(accounts, fromId);
@@ -756,83 +887,91 @@ export default function App() {
     const transferId = uid('xfr');
     const fxRateFrom = from.currency === 'TRY' ? 1 : (fx.rates[from.currency] || 0);
     const fxRateTo = to.currency === 'TRY' ? 1 : (fx.rates[to.currency] || 0);
-    // Amount is entered in `from` currency; convert into `to` currency through TRY
     const amountTRY = amount * fxRateFrom;
     const amountTo = fxRateTo ? amountTRY / fxRateTo : amount;
 
     const out = {
-      id: uid('tx'),
-      type: 'gider',
-      accountId: fromId,
-      category: 'diger',
-      amount,
-      currency: from.currency,
-      fxRate: fxRateFrom,
-      amountTRY,
-      date,
-      note: note || `Transfer → ${to.name}`,
-      source: 'transfer',
-      transferId,
-      createdAt: Date.now(),
+      id: uid('tx'), type: 'gider', accountId: fromId, category: 'diger',
+      amount, currency: from.currency, fxRate: fxRateFrom, amountTRY, date,
+      note: note || `Transfer → ${to.name}`, source: 'transfer', transferId, createdAt: Date.now(),
     };
     const inn = {
-      id: uid('tx'),
-      type: 'gelir',
-      accountId: toId,
-      category: 'diger_g',
-      amount: Number(amountTo.toFixed(2)),
-      currency: to.currency,
-      fxRate: fxRateTo,
-      amountTRY,
-      date,
-      note: note || `Transfer ← ${from.name}`,
-      source: 'transfer',
-      transferId,
-      createdAt: Date.now(),
+      id: uid('tx'), type: 'gelir', accountId: toId, category: 'diger_g',
+      amount: Number(amountTo.toFixed(2)), currency: to.currency, fxRate: fxRateTo, amountTRY, date,
+      note: note || `Transfer ← ${from.name}`, source: 'transfer', transferId, createdAt: Date.now(),
     };
-    await saveTxs([...txs, out, inn]);
-    flashToast('Transfer kaydedildi', 'success');
-  }, [accounts, txs, fx, saveTxs, flashToast]);
+    const ok = await runApi(() => api.bulkInsertTransactions([out, inn]));
+    if (ok) {
+      setTxs([...txs, out, inn]);
+      flashToast('Transfer kaydedildi', 'success');
+    }
+  }, [accounts, txs, fx, runApi, flashToast]);
 
   /* ---------- CRUD: Recurring ---------- */
   const upsertRule = useCallback(async (rule) => {
     const exists = recurring.some(r => r.id === rule.id);
-    const next = exists ? recurring.map(r => r.id === rule.id ? rule : r) : [...recurring, rule];
-    await saveRecurring(next);
-    flashToast(exists ? 'Tekrar güncellendi' : 'Tekrar eklendi', 'success');
-  }, [recurring, saveRecurring, flashToast]);
+    const ok = await runApi(() => api.upsertRule(rule));
+    if (ok) {
+      setRecurring(exists ? recurring.map(r => r.id === rule.id ? rule : r) : [...recurring, rule]);
+      flashToast(exists ? 'Tekrar güncellendi' : 'Tekrar eklendi', 'success');
+    }
+  }, [recurring, runApi, flashToast]);
 
   const deleteRule = useCallback(async (id) => {
-    await saveRecurring(recurring.filter(r => r.id !== id));
-    flashToast('Tekrar silindi', 'success');
-  }, [recurring, saveRecurring, flashToast]);
+    const ok = await runApi(() => api.deleteRule(id));
+    if (ok) {
+      setRecurring(recurring.filter(r => r.id !== id));
+      flashToast('Tekrar silindi', 'success');
+    }
+  }, [recurring, runApi, flashToast]);
 
   const toggleRule = useCallback(async (id) => {
-    await saveRecurring(recurring.map(r => r.id === id ? { ...r, active: !r.active } : r));
-  }, [recurring, saveRecurring]);
+    const rule = recurring.find(r => r.id === id);
+    if (!rule) return;
+    const next = { ...rule, active: !rule.active };
+    const ok = await runApi(() => api.upsertRule(next));
+    if (ok) setRecurring(recurring.map(r => r.id === id ? next : r));
+  }, [recurring, runApi]);
 
   /* ---------- CRUD: Budgets ---------- */
   const upsertBudget = useCallback(async (goal) => {
     const exists = budgets.some(b => b.id === goal.id);
-    const next = exists ? budgets.map(b => b.id === goal.id ? goal : b) : [...budgets, goal];
-    await saveBudgets(next);
-    flashToast(exists ? 'Hedef güncellendi' : 'Hedef eklendi', 'success');
-  }, [budgets, saveBudgets, flashToast]);
+    const ok = await runApi(() => api.upsertGoal(goal));
+    if (ok) {
+      setBudgets(exists ? budgets.map(b => b.id === goal.id ? goal : b) : [...budgets, goal]);
+      flashToast(exists ? 'Hedef güncellendi' : 'Hedef eklendi', 'success');
+    }
+  }, [budgets, runApi, flashToast]);
 
   const deleteBudget = useCallback(async (id) => {
-    await saveBudgets(budgets.filter(b => b.id !== id));
-    flashToast('Hedef silindi', 'success');
-  }, [budgets, saveBudgets, flashToast]);
+    const ok = await runApi(() => api.deleteGoal(id));
+    if (ok) {
+      setBudgets(budgets.filter(b => b.id !== id));
+      flashToast('Hedef silindi', 'success');
+    }
+  }, [budgets, runApi, flashToast]);
 
-  if (!booted) {
+  if (bootError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50 text-stone-500">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="w-5 h-5 animate-spin" /> Yükleniyor…
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+        <div className="max-w-md text-center text-stone-700">
+          <AlertTriangle className="w-10 h-10 text-rose-600 mx-auto mb-3" />
+          <h1 className="text-lg font-semibold mb-2">Veri yüklenemedi</h1>
+          <p className="text-sm text-stone-500 mb-3">{bootError}</p>
+          <p className="text-xs text-stone-500">
+            Supabase tablo şeması <code>supabase/schema.sql</code> çalıştırıldı mı? RLS aktif olmalı.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm"
+          >
+            Tekrar dene
+          </button>
         </div>
       </div>
     );
   }
+  if (!booted) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 pb-24">
@@ -890,8 +1029,10 @@ export default function App() {
         {view.name === 'settings' && (
           <SettingsPage
             fx={fx}
+            session={session}
             onRefresh={() => refreshFx(true)}
             onManual={async (r) => { const fresh = await saveManualRates(r); setFx(fresh); flashToast('Manuel kurlar kaydedildi', 'success'); }}
+            onLogout={async () => { await supabase.auth.signOut(); }}
           />
         )}
       </main>
@@ -1742,13 +1883,27 @@ function CardCyclePage({ accountId, accounts, txs, fx, onBack }) {
    SETTINGS PAGE
    ============================================================ */
 
-function SettingsPage({ fx, onRefresh, onManual }) {
+function SettingsPage({ fx, session, onRefresh, onManual, onLogout }) {
   const [usd, setUsd] = useState(fx.rates.USD?.toFixed(4) || '');
   const [eur, setEur] = useState(fx.rates.EUR?.toFixed(4) || '');
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-stone-800">Ayarlar</h2>
+
+      <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Mail className="w-4 h-4 text-stone-500" />
+          <div className="font-medium text-stone-800">Hesap</div>
+        </div>
+        <div className="text-sm text-stone-700 truncate">{session?.user?.email}</div>
+        <button
+          onClick={onLogout}
+          className="w-full mt-1 px-3 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-sm flex items-center justify-center gap-1.5"
+        >
+          <LogOut className="w-4 h-4" /> Çıkış yap
+        </button>
+      </div>
 
       <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
         <div className="flex items-center gap-2">
@@ -1783,7 +1938,7 @@ function SettingsPage({ fx, onRefresh, onManual }) {
 
       <div className="bg-white rounded-2xl border border-stone-200 p-4 text-xs text-stone-600 space-y-2">
         <div className="font-medium text-stone-800 text-sm">Veri</div>
-        <p>Veriler tarayıcı saklama alanında tutulur. Tarayıcı verilerini temizlemek geçmişi silebilir.</p>
+        <p>Veriler Supabase bulutunda tutulur, RLS ile sadece sen erişebilirsin. Aynı hesapla farklı cihazlardan giriş yaparak senkron tutabilirsin.</p>
       </div>
     </div>
   );
