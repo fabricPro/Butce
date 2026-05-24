@@ -57,7 +57,7 @@ function txFromDb(r) {
   };
 }
 function txToDb(t, userId) {
-  return {
+  const payload = {
     id: t.id,
     user_id: userId,
     type: t.type,
@@ -72,10 +72,15 @@ function txToDb(t, userId) {
     source: t.source || 'manual',
     source_id: t.sourceId || null,
     transfer_id: t.transferId || null,
-    status: t.status || 'paid',
-    installment_no: t.installmentNo ?? null,
     created_at: t.createdAt || Date.now(),
   };
+  // Migration-002 columns: only include when they carry meaningful data so the
+  // app keeps inserting transactions even on databases that haven't run
+  // `supabase/migrations/002_payment_features.sql` yet. Default (`paid` status,
+  // no installment) matches the legacy behavior and is implicit on old schemas.
+  if (t.status === 'pending') payload.status = 'pending';
+  if (t.installmentNo != null) payload.installment_no = t.installmentNo;
+  return payload;
 }
 
 function ruleFromDb(r) {
@@ -187,6 +192,25 @@ async function getUserId() {
   return data?.user?.id;
 }
 
+// Detects "missing table / missing column" errors from Supabase and rewrites
+// them into a single actionable message pointing at the right migration.
+function rewriteMigrationError(error, hint) {
+  const msg = error?.message || String(error);
+  const isMissing =
+    error?.code === 'PGRST205' ||
+    error?.code === 'PGRST204' ||
+    /could not find|does not exist|schema cache/i.test(msg);
+  if (isMissing) {
+    const e = new Error(
+      `Veritabanı şeması eksik (${hint}). ` +
+      'supabase/migrations/002_payment_features.sql dosyasını Supabase SQL Editor\'de çalıştır.'
+    );
+    e.cause = error;
+    return e;
+  }
+  return error;
+}
+
 export const api = {
   // accounts
   async listAccounts() {
@@ -213,7 +237,7 @@ export const api = {
   async upsertTransaction(t) {
     const userId = await getUserId();
     const { error } = await supabase.from('transactions').upsert(txToDb(t, userId));
-    if (error) throw error;
+    if (error) throw rewriteMigrationError(error, 'transactions.status / installment_no');
   },
   async deleteTransaction(id) {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
@@ -223,7 +247,7 @@ export const api = {
     if (!rows.length) return;
     const userId = await getUserId();
     const { error } = await supabase.from('transactions').insert(rows.map(t => txToDb(t, userId)));
-    if (error) throw error;
+    if (error) throw rewriteMigrationError(error, 'transactions.status / installment_no');
   },
 
   // recurring rules
@@ -257,11 +281,11 @@ export const api = {
   async upsertLoan(l) {
     const userId = await getUserId();
     const { error } = await supabase.from('loans').upsert(loanToDb(l, userId));
-    if (error) throw error;
+    if (error) throw rewriteMigrationError(error, 'loans');
   },
   async deleteLoan(id) {
     const { error } = await supabase.from('loans').delete().eq('id', id);
-    if (error) throw error;
+    if (error) throw rewriteMigrationError(error, 'loans');
   },
 
   // budget goals
