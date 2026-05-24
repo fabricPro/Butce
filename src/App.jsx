@@ -15,6 +15,10 @@ import LoginScreen from './auth/LoginScreen.jsx';
 
 import Header from './components/nav/Header.jsx';
 import BottomNav from './components/nav/BottomNav.jsx';
+import DashboardSkeleton from './components/skeletons/DashboardSkeleton.jsx';
+
+import { RefreshCw } from 'lucide-react';
+import usePullToRefresh from './hooks/usePullToRefresh.js';
 
 import Dashboard from './pages/Dashboard.jsx';
 import AccountsPage from './pages/AccountsPage.jsx';
@@ -71,7 +75,7 @@ function AppCore({ session }) {
   const [loans, setLoans] = useState([]);
   const [fx, setFx] = useState(INITIAL_FX);
   const [modal, setModal] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [toasts, setToasts] = useState([]);
 
   // Bootstrap
   useEffect(() => {
@@ -109,15 +113,20 @@ function AppCore({ session }) {
     })();
   }, [session.user.id]);
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 2400);
-    return () => clearTimeout(id);
-  }, [toast]);
+  // Queue-based toast: multiple toasts stack and auto-dismiss independently.
+  // `opts.actionLabel + opts.onAction` lets a toast offer an undo action
+  // (e.g. "Geri al" on delete).
+  const flashToast = useCallback((message, kind = 'info', opts) => {
+    const id = uid('toast');
+    const duration = opts?.actionLabel ? 6000 : 2800;
+    setToasts(t => [...t, { id, message, kind, actionLabel: opts?.actionLabel, onAction: opts?.onAction }]);
+    setTimeout(() => {
+      setToasts(t => t.filter(x => x.id !== id));
+    }, duration);
+  }, []);
 
-  const flashToast = useCallback((message, kind = 'info') => {
-    setToast({ message, kind });
+  const dismissToast = useCallback((id) => {
+    setToasts(t => t.filter(x => x.id !== id));
   }, []);
 
   // Error-aware wrapper: call fn; on failure, flash toast (caller handles state).
@@ -131,6 +140,31 @@ function AppCore({ session }) {
       return false;
     }
   }, [flashToast]);
+
+  /* ---- Full reload (pull-to-refresh) ---- */
+  const reloadAll = useCallback(async () => {
+    try {
+      const [accs, t, r, b, ln, fxData] = await Promise.all([
+        api.listAccounts(),
+        api.listTransactions(),
+        api.listRules(),
+        api.listGoals(),
+        api.listLoans(),
+        ensureFxRates(true),
+      ]);
+      setAccounts(accs);
+      setTxs(t);
+      setRecurring(r);
+      setBudgets(b);
+      setLoans(ln);
+      setFx(fxData);
+      flashToast('Yenilendi', 'success');
+    } catch (e) {
+      flashToast('Yenilenemedi: ' + (e.message || e), 'warn');
+    }
+  }, [flashToast]);
+
+  const { pull, refreshing } = usePullToRefresh(reloadAll, { enabled: booted });
 
   /* ---- FX ---- */
   const refreshFx = useCallback(async (force = true) => {
@@ -173,9 +207,18 @@ function AppCore({ session }) {
   }, [txs, runApi, flashToast]);
 
   const deleteTx = useCallback(async (id) => {
+    const original = txs.find(t => t.id === id);
     if (await runApi(() => api.deleteTransaction(id))) {
       setTxs(txs.filter(t => t.id !== id));
-      flashToast('İşlem silindi', 'success');
+      flashToast('İşlem silindi', 'success', original ? {
+        actionLabel: 'Geri al',
+        onAction: async () => {
+          if (await runApi(() => api.upsertTransaction(original))) {
+            setTxs(curr => [...curr, original]);
+            flashToast('İşlem geri yüklendi', 'success');
+          }
+        },
+      } : undefined);
     }
   }, [txs, runApi, flashToast]);
 
@@ -217,9 +260,18 @@ function AppCore({ session }) {
   }, [recurring, runApi, flashToast]);
 
   const deleteRule = useCallback(async (id) => {
+    const original = recurring.find(r => r.id === id);
     if (await runApi(() => api.deleteRule(id))) {
       setRecurring(recurring.filter(r => r.id !== id));
-      flashToast('Tekrar silindi', 'success');
+      flashToast('Tekrar silindi', 'success', original ? {
+        actionLabel: 'Geri al',
+        onAction: async () => {
+          if (await runApi(() => api.upsertRule(original))) {
+            setRecurring(curr => [...curr, original]);
+            flashToast('Tekrar geri yüklendi', 'success');
+          }
+        },
+      } : undefined);
     }
   }, [recurring, runApi, flashToast]);
 
@@ -242,9 +294,18 @@ function AppCore({ session }) {
   }, [budgets, runApi, flashToast]);
 
   const deleteBudget = useCallback(async (id) => {
+    const original = budgets.find(b => b.id === id);
     if (await runApi(() => api.deleteGoal(id))) {
       setBudgets(budgets.filter(b => b.id !== id));
-      flashToast('Hedef silindi', 'success');
+      flashToast('Hedef silindi', 'success', original ? {
+        actionLabel: 'Geri al',
+        onAction: async () => {
+          if (await runApi(() => api.upsertGoal(original))) {
+            setBudgets(curr => [...curr, original]);
+            flashToast('Hedef geri yüklendi', 'success');
+          }
+        },
+      } : undefined);
     }
   }, [budgets, runApi, flashToast]);
 
@@ -258,9 +319,18 @@ function AppCore({ session }) {
   }, [loans, runApi, flashToast]);
 
   const deleteLoan = useCallback(async (id) => {
+    const original = loans.find(l => l.id === id);
     if (await runApi(() => api.deleteLoan(id))) {
       setLoans(loans.filter(l => l.id !== id));
-      flashToast('Kredi silindi', 'success');
+      flashToast('Kredi silindi', 'success', original ? {
+        actionLabel: 'Geri al',
+        onAction: async () => {
+          if (await runApi(() => api.upsertLoan(original))) {
+            setLoans(curr => [...curr, original]);
+            flashToast('Kredi geri yüklendi', 'success');
+          }
+        },
+      } : undefined);
     }
   }, [loans, runApi, flashToast]);
 
@@ -323,10 +393,36 @@ function AppCore({ session }) {
       </div>
     );
   }
-  if (!booted) return <LoadingScreen />;
+  if (!booted) {
+    // Show real layout + skeleton placeholders instead of a blank spinner,
+    // so the first paint feels structured rather than empty.
+    return (
+      <div className="min-h-screen bg-stone-50 text-stone-800 pb-nav">
+        <Header setView={setView} fx={fx} onRefreshFx={() => refreshFx(true)} />
+        <main className="max-w-5xl mx-auto px-4 py-6">
+          <DashboardSkeleton />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 pb-nav">
+      {/* Pull-to-refresh spinner — visible while user is dragging or
+          the reload is in flight. Positioned below the sticky header. */}
+      {(pull > 0 || refreshing) && (
+        <div
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-40 pt-safe pointer-events-none"
+          style={{ opacity: Math.min(1, pull / 60) }}
+        >
+          <div className="bg-white rounded-full shadow-card p-2 border border-stone-100">
+            <RefreshCw
+              className={`w-4 h-4 text-amber-600 ${refreshing ? 'animate-spin' : ''}`}
+              style={!refreshing ? { transform: `rotate(${pull * 3}deg)` } : undefined}
+            />
+          </div>
+        </div>
+      )}
       <Header setView={setView} fx={fx} onRefreshFx={() => refreshFx(true)} />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {view.name === 'dashboard' && (
@@ -452,14 +548,36 @@ function AppCore({ session }) {
         />
       )}
 
-      {toast && (
-        <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg text-sm font-medium z-50 ${
-          toast.kind === 'success' ? 'bg-emerald-600 text-white' :
-          toast.kind === 'warn' ? 'bg-amber-500 text-white' : 'bg-stone-800 text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
+      {/* Toast stack — newest at bottom (above the BottomNav). */}
+      <div className="fixed bottom-24 inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none">
+        {toasts.map(t => (
+          <div
+            key={t.id}
+            className={`pointer-events-auto max-w-md w-fit flex items-center gap-3 px-4 py-2.5 rounded-full shadow-lg text-sm font-medium animate-[slideup-toast_240ms_cubic-bezier(.2,.8,.2,1)] ${
+              t.kind === 'success' ? 'bg-emerald-600 text-white' :
+              t.kind === 'warn'    ? 'bg-amber-500 text-white' :
+                                     'bg-stone-800 text-white'
+            }`}
+          >
+            <span>{t.message}</span>
+            {t.actionLabel && (
+              <button
+                onClick={() => { t.onAction?.(); dismissToast(t.id); }}
+                className="px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-semibold"
+              >
+                {t.actionLabel}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes slideup-toast {
+          from { opacity: 0; transform: translateY(20px) }
+          to   { opacity: 1; transform: translateY(0) }
+        }
+      `}</style>
     </div>
   );
 }

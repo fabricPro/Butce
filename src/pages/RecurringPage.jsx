@@ -17,7 +17,12 @@ export default function RecurringPage({ rules, accounts, onAdd, onEdit, onDelete
       </div>
 
       {rules.length === 0 ? (
-        <EmptyState text="Düzenli ödeme veya gelir varsa tekrar olarak ekle." />
+        <EmptyState
+          Icon={Repeat}
+          text="Kira, maaş, fatura gibi düzenli işlemler için tekrar ekle — uygulama her ayını otomatik doldurur."
+          actionLabel="+ Tekrar Ekle"
+          onAction={onAdd}
+        />
       ) : (
         <ul className="space-y-2">
           {rules.map(r => {

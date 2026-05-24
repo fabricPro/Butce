@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, Target } from 'lucide-react';
 import { getCat } from '../constants.js';
 import { toDateStr } from '../lib/date.js';
 import { formatMoney, convertToTRY } from '../lib/format.js';
@@ -34,7 +34,12 @@ export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete 
       </div>
 
       {budgets.length === 0 ? (
-        <EmptyState text="Kategoriler için aylık harcama hedefi belirle." />
+        <EmptyState
+          Icon={Target}
+          text="Kategoriler için aylık harcama hedefi belirle, sınırı aşınca uyarı al."
+          actionLabel="+ Hedef Ekle"
+          onAction={onAdd}
+        />
       ) : (
         <ul className="space-y-2">
           {budgets.map(g => {

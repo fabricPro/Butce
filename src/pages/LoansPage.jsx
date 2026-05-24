@@ -56,7 +56,12 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
       )}
 
       {loans.length === 0 ? (
-        <EmptyState text="Henüz kredi eklenmedi. Konut, taşıt, ihtiyaç vs. kredilerini takip etmek için ekle." />
+        <EmptyState
+          Icon={Banknote}
+          text="Konut, taşıt, ihtiyaç kredilerini ekle; kalan taksit ve aylık yük otomatik hesaplansın."
+          actionLabel="+ Kredi Ekle"
+          onAction={onAdd}
+        />
       ) : (
         <ul className="space-y-2">
           {enriched.map(({ loan, totalPaid, remainingAmount, nextDue, overdue, pct }) => {

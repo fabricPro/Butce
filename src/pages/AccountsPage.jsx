@@ -16,7 +16,12 @@ export default function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelet
       </div>
 
       {accounts.length === 0 ? (
-        <EmptyState text="Henüz hesap yok. İlk hesabını oluştur." />
+        <EmptyState
+          Icon={Wallet}
+          text="Henüz hesap yok. Nakit, banka veya kredi kartı hesabı ekleyerek başla."
+          actionLabel="+ Hesap Ekle"
+          onAction={onAdd}
+        />
       ) : (
         <ul className="space-y-2">
           {accounts.map(a => {

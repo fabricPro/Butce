@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, Clock, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Clock, CheckCircle2, Layers } from 'lucide-react';
 import { CATS } from '../constants.js';
 import { cmpDate, formatDateLong } from '../lib/date.js';
 import EmptyState from '../components/EmptyState.jsx';
@@ -75,7 +75,12 @@ export default function TransactionsPage({
       </div>
 
       {groups.length === 0 ? (
-        <EmptyState text="İşlem yok." />
+        <EmptyState
+          Icon={Layers}
+          text="Henüz işlem yok. İlk gelir veya gideri ekleyerek başla."
+          actionLabel="+ İşlem Ekle"
+          onAction={onAdd}
+        />
       ) : (
         <div className="space-y-4">
           {groups.map(([date, items]) => (
