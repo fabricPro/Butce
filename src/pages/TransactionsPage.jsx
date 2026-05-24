@@ -5,6 +5,7 @@ import { cmpDate, formatDateLong } from '../lib/date.js';
 import EmptyState from '../components/EmptyState.jsx';
 import Pill from '../components/Pill.jsx';
 import TxRow from '../components/TxRow.jsx';
+import IconButton from '../components/IconButton.jsx';
 
 export default function TransactionsPage({
   accounts, txs, onAdd, onEdit, onDelete, onMarkPaid, initialStatus,
@@ -39,7 +40,7 @@ export default function TransactionsPage({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-stone-800">İşlemler</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+        <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> İşlem
         </button>
       </div>
@@ -86,26 +87,26 @@ export default function TransactionsPage({
                 {items.map(t => (
                   <li
                     key={t.id}
-                    className="px-4 py-2.5 hover:bg-stone-50 flex items-center gap-3 cursor-pointer"
+                    className="px-3 py-2 hover:bg-stone-50 active:bg-stone-100 flex items-center gap-2 cursor-pointer transition-colors"
                     onClick={() => onEdit(t)}
                   >
                     <TxRow tx={t} accounts={accounts} expanded />
                     {t.status === 'pending' && onMarkPaid && (
-                      <button
+                      <IconButton
                         onClick={(e) => { e.stopPropagation(); onMarkPaid(t); }}
-                        className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600"
                         title="Ödendi olarak işaretle"
+                        tone="success"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
+                        <CheckCircle2 className="w-5 h-5" />
+                      </IconButton>
                     )}
-                    <button
+                    <IconButton
                       onClick={(e) => { e.stopPropagation(); onDelete(t.id); }}
-                      className="p-1.5 rounded hover:bg-rose-50 text-rose-500"
                       title="Sil"
+                      tone="danger"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <Trash2 className="w-5 h-5" />
+                    </IconButton>
                   </li>
                 ))}
               </ul>

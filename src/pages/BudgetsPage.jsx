@@ -5,6 +5,7 @@ import { toDateStr } from '../lib/date.js';
 import { formatMoney, convertToTRY } from '../lib/format.js';
 import { isSettled, inDateRange } from '../lib/predicates.js';
 import EmptyState from '../components/EmptyState.jsx';
+import IconButton from '../components/IconButton.jsx';
 
 export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete }) {
   const now = new Date();
@@ -27,7 +28,7 @@ export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-stone-800">Aylık Bütçe Hedefleri</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+        <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Hedef
         </button>
       </div>
@@ -53,13 +54,13 @@ export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete 
                       {formatMoney(spent, 'TRY')} / {formatMoney(g.limit, 'TRY')}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => onEdit(g)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Düzenle">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => onDelete(g.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-600" title="Sil">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-0.5 -mr-2">
+                    <IconButton onClick={() => onEdit(g)} title="Düzenle">
+                      <Pencil className="w-5 h-5" />
+                    </IconButton>
+                    <IconButton onClick={() => onDelete(g.id)} title="Sil" tone="danger">
+                      <Trash2 className="w-5 h-5" />
+                    </IconButton>
                   </div>
                 </div>
                 <div className="mt-3 h-2 bg-stone-100 rounded-full overflow-hidden">

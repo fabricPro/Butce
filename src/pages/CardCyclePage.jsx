@@ -60,13 +60,23 @@ export default function CardCyclePage({ accountId, accounts, txs, onBack, onPayC
             <div className="font-semibold text-stone-800">{card.name}</div>
             <div className="text-xs text-stone-500">Kesim {card.cutoffDay}. gün · {card.currency}</div>
           </div>
-          <div className="ml-auto flex items-center gap-1">
-            <button onClick={() => setOffset(o => o - 1)} className="p-1.5 rounded hover:bg-stone-100" title="Önceki dönem">
-              <ChevronLeft className="w-4 h-4" />
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              onClick={() => setOffset(o => o - 1)}
+              className="min-h-[44px] min-w-[44px] rounded-lg hover:bg-stone-100 active:bg-stone-200 text-stone-600 inline-flex items-center justify-center"
+              title="Önceki dönem"
+              aria-label="Önceki dönem"
+            >
+              <ChevronLeft className="w-5 h-5" />
             </button>
-            <div className="text-sm font-medium px-1">{cycle.label}</div>
-            <button onClick={() => setOffset(o => o + 1)} className="p-1.5 rounded hover:bg-stone-100" title="Sonraki dönem">
-              <ChevronRight className="w-4 h-4" />
+            <div className="text-sm font-medium px-1 tabular-nums">{cycle.label}</div>
+            <button
+              onClick={() => setOffset(o => o + 1)}
+              className="min-h-[44px] min-w-[44px] rounded-lg hover:bg-stone-100 active:bg-stone-200 text-stone-600 inline-flex items-center justify-center"
+              title="Sonraki dönem"
+              aria-label="Sonraki dönem"
+            >
+              <ChevronRight className="w-5 h-5" />
             </button>
           </div>
         </div>

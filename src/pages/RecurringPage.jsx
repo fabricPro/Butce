@@ -4,13 +4,14 @@ import { formatNum } from '../lib/format.js';
 import { addDays, formatDateLong, todayStr } from '../lib/date.js';
 import { nextOccurrence, describeFrequency } from '../lib/recurring.js';
 import EmptyState from '../components/EmptyState.jsx';
+import IconButton from '../components/IconButton.jsx';
 
 export default function RecurringPage({ rules, accounts, onAdd, onEdit, onDelete, onToggle }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-stone-800">Tekrarlar</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+        <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Tekrar
         </button>
       </div>
@@ -44,16 +45,16 @@ export default function RecurringPage({ rules, accounts, onAdd, onEdit, onDelete
                     {isIncome ? '+' : '−'}{formatNum(r.amount)} {CURRENCIES[r.currency]?.symbol || ''}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 ml-2">
-                  <button onClick={() => onToggle(r.id)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title={r.active ? 'Duraklat' : 'Aktifleştir'}>
-                    {r.active ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => onEdit(r)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Düzenle">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => onDelete(r.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-600" title="Sil">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="flex items-center gap-0.5 ml-1 -mr-2">
+                  <IconButton onClick={() => onToggle(r.id)} title={r.active ? 'Duraklat' : 'Aktifleştir'}>
+                    {r.active ? <PauseCircle className="w-5 h-5" /> : <PlayCircle className="w-5 h-5" />}
+                  </IconButton>
+                  <IconButton onClick={() => onEdit(r)} title="Düzenle">
+                    <Pencil className="w-5 h-5" />
+                  </IconButton>
+                  <IconButton onClick={() => onDelete(r.id)} title="Sil" tone="danger">
+                    <Trash2 className="w-5 h-5" />
+                  </IconButton>
                 </div>
               </li>
             );

@@ -3,13 +3,14 @@ import { ACCOUNT_TYPES } from '../constants.js';
 import { formatMoney } from '../lib/format.js';
 import { getAccountNativeBalance, getAccountBalanceTRY } from '../lib/balance.js';
 import EmptyState from '../components/EmptyState.jsx';
+import IconButton from '../components/IconButton.jsx';
 
 export default function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelete, onOpen }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-stone-800">Hesaplar</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+        <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Hesap
         </button>
       </div>
@@ -43,18 +44,18 @@ export default function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelet
                     <div className="text-xs text-stone-500">≈ {formatMoney(tryEq, 'TRY')}</div>
                   )}
                 </div>
-                <div className="flex items-center gap-1 ml-2">
+                <div className="flex items-center gap-0.5 ml-1 -mr-2">
                   {isCard && (
-                    <button onClick={() => onOpen(a)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Ekstre">
-                      <Calendar className="w-4 h-4" />
-                    </button>
+                    <IconButton onClick={() => onOpen(a)} title="Ekstre">
+                      <Calendar className="w-5 h-5" />
+                    </IconButton>
                   )}
-                  <button onClick={() => onEdit(a)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Düzenle">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => onDelete(a.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-600" title="Sil">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <IconButton onClick={() => onEdit(a)} title="Düzenle">
+                    <Pencil className="w-5 h-5" />
+                  </IconButton>
+                  <IconButton onClick={() => onDelete(a.id)} title="Sil" tone="danger">
+                    <Trash2 className="w-5 h-5" />
+                  </IconButton>
                 </div>
               </li>
             );

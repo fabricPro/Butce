@@ -4,6 +4,7 @@ import { getAccount } from '../constants.js';
 import { todayStr, toDateStr, cmpDate, formatDateLong } from '../lib/date.js';
 import { formatMoney } from '../lib/format.js';
 import EmptyState from '../components/EmptyState.jsx';
+import IconButton from '../components/IconButton.jsx';
 
 export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, onPay }) {
   const today = todayStr();
@@ -36,7 +37,7 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-stone-800">Krediler</h2>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+        <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Kredi
         </button>
       </div>
@@ -84,13 +85,13 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 -mr-1.5">
-                    <button onClick={() => onEdit(loan)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Düzenle">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => onDelete(loan.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-600" title="Sil">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-0.5 -mr-2">
+                    <IconButton onClick={() => onEdit(loan)} title="Düzenle">
+                      <Pencil className="w-5 h-5" />
+                    </IconButton>
+                    <IconButton onClick={() => onDelete(loan.id)} title="Sil" tone="danger">
+                      <Trash2 className="w-5 h-5" />
+                    </IconButton>
                   </div>
                 </div>
 
