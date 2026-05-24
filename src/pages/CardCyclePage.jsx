@@ -12,6 +12,14 @@ export default function CardCyclePage({ accountId, accounts, txs, onBack, onPayC
   const card = getAccount(accounts, accountId);
   const [offset, setOffset] = useState(0);
 
+  // All hooks must run unconditionally before any early return.
+  // For invalid cards, fall back to a dummy cycle that yields zero tx.
+  const cycle = card?.cutoffDay ? getCycleByOffset(card, offset) : null;
+  const cycleTxs = useMemo(() => {
+    if (!card || !cycle) return [];
+    return txs.filter(t => t.accountId === card.id && isSettled(t) && txInCycle(t, cycle));
+  }, [txs, card, cycle]);
+
   if (!card || card.type !== 'kredi_karti') {
     return (
       <div>
@@ -33,11 +41,6 @@ export default function CardCyclePage({ accountId, accounts, txs, onBack, onPayC
     );
   }
 
-  const cycle = getCycleByOffset(card, offset);
-  const cycleTxs = useMemo(
-    () => txs.filter(t => t.accountId === card.id && isSettled(t) && txInCycle(t, cycle)),
-    [txs, card.id, cycle],
-  );
   const totalSpent = cycleTxs.filter(t => t.type === 'gider').reduce((s, t) => s + t.amount, 0);
   const totalPaid = cycleTxs.filter(t => t.type === 'gelir').reduce((s, t) => s + t.amount, 0);
   const balance = totalSpent - totalPaid;

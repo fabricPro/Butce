@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { getCat } from '../constants.js';
-import { cmpDate, toDateStr } from '../lib/date.js';
+import { toDateStr } from '../lib/date.js';
 import { formatMoney, convertToTRY } from '../lib/format.js';
 import { isSettled, inDateRange } from '../lib/predicates.js';
 import EmptyState from '../components/EmptyState.jsx';
