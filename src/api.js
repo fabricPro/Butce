@@ -51,6 +51,8 @@ function txFromDb(r) {
     source: r.source || 'manual',
     sourceId: r.source_id || undefined,
     transferId: r.transfer_id || undefined,
+    status: r.status || 'paid',
+    installmentNo: r.installment_no ?? undefined,
     createdAt: Number(r.created_at) || Date.now(),
   };
 }
@@ -70,6 +72,8 @@ function txToDb(t, userId) {
     source: t.source || 'manual',
     source_id: t.sourceId || null,
     transfer_id: t.transferId || null,
+    status: t.status || 'paid',
+    installment_no: t.installmentNo ?? null,
     created_at: t.createdAt || Date.now(),
   };
 }
@@ -115,6 +119,44 @@ function ruleToDb(r, userId) {
     exceptions: r.exceptions || [],
     last_generated_date: r.lastGeneratedDate || null,
     created_at: r.createdAt || Date.now(),
+  };
+}
+
+function loanFromDb(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    lender: r.lender || '',
+    accountId: r.account_id,
+    totalAmount: Number(r.total_amount),
+    installmentCount: Number(r.installment_count),
+    monthlyPayment: Number(r.monthly_payment),
+    firstPaymentDate: r.first_payment_date,
+    installmentsPaid: Number(r.installments_paid) || 0,
+    category: r.category || 'fatura',
+    currency: r.currency || 'TRY',
+    notes: r.notes || '',
+    archived: !!r.archived,
+    createdAt: Number(r.created_at) || Date.now(),
+  };
+}
+function loanToDb(l, userId) {
+  return {
+    id: l.id,
+    user_id: userId,
+    name: l.name,
+    lender: l.lender || null,
+    account_id: l.accountId,
+    total_amount: l.totalAmount,
+    installment_count: l.installmentCount,
+    monthly_payment: l.monthlyPayment,
+    first_payment_date: l.firstPaymentDate,
+    installments_paid: l.installmentsPaid || 0,
+    category: l.category || 'fatura',
+    currency: l.currency || 'TRY',
+    notes: l.notes || null,
+    archived: !!l.archived,
+    created_at: l.createdAt || Date.now(),
   };
 }
 
@@ -197,6 +239,28 @@ export const api = {
   },
   async deleteRule(id) {
     const { error } = await supabase.from('recurring_rules').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // loans
+  async listLoans() {
+    // Tolerant: if the loans table is missing (migration not yet run), default to [].
+    try {
+      const { data, error } = await supabase.from('loans').select('*').order('created_at');
+      if (error) throw error;
+      return (data || []).map(loanFromDb);
+    } catch (e) {
+      console.warn('[loans] list failed — run supabase/migrations/002_payment_features.sql for full functionality:', e?.message || e);
+      return [];
+    }
+  },
+  async upsertLoan(l) {
+    const userId = await getUserId();
+    const { error } = await supabase.from('loans').upsert(loanToDb(l, userId));
+    if (error) throw error;
+  },
+  async deleteLoan(id) {
+    const { error } = await supabase.from('loans').delete().eq('id', id);
     if (error) throw error;
   },
 

@@ -6,7 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, Wallet, Landmark, CreditCard, Pencil,
   RefreshCw, Globe, AlertTriangle, Check, ArrowLeftRight,
   Repeat, Calendar, PauseCircle, PlayCircle, Info, Layers, Activity, Target,
-  Mail, LogOut
+  Mail, LogOut, Banknote, Clock, CheckCircle2
 } from 'lucide-react';
 import { supabase, supabaseConfigured } from './supabase.js';
 import { api } from './api.js';
@@ -542,6 +542,7 @@ function getSettledBalanceTRY(accounts, txs, fxRates, asOfDate) {
     let native = acc.initialBalance || 0;
     for (const t of txs) {
       if (t.accountId !== acc.id) continue;
+      if (t.status === 'pending') continue;
       if (cmpDate(t.date, asOfDate) > 0) continue;
       native += t.type === 'gelir' ? t.amount : -t.amount;
     }
@@ -560,8 +561,9 @@ function projectMonthlyFlows(months, accounts, txs, recurringRules, fxRates) {
     let manualIn = 0, manualOut = 0;
     let forecastIn = 0, forecastOut = 0;
 
-    // Already-recorded transactions
+    // Already-recorded transactions (exclude pending — they haven't actually happened)
     for (const t of txs) {
+      if (t.status === 'pending') continue;
       if (cmpDate(t.date, monthStart) < 0 || cmpDate(t.date, monthEnd) > 0) continue;
       const trySum = t.amountTRY != null ? t.amountTRY : convertToTRY(t.amount, t.currency, fxRates);
       if (t.type === 'gelir') {
@@ -617,6 +619,7 @@ function getAccountNativeBalance(account, txs, asOfDate = null) {
   let bal = account.initialBalance || 0;
   for (const t of txs) {
     if (t.accountId !== account.id) continue;
+    if (t.status === 'pending') continue;
     if (asOfDate && cmpDate(t.date, asOfDate) > 0) continue;
     bal += t.type === 'gelir' ? t.amount : -t.amount;
   }
@@ -760,6 +763,7 @@ function AppCore({ session }) {
   const [txs, setTxs] = useState([]);
   const [recurring, setRecurring] = useState([]);
   const [budgets, setBudgets] = useState([]);
+  const [loans, setLoans] = useState([]);
   const [fx, setFx] = useState(INITIAL_FX);
   const [modal, setModal] = useState(null); // { kind, payload }
   const [toast, setToast] = useState(null);
@@ -768,11 +772,12 @@ function AppCore({ session }) {
   useEffect(() => {
     (async () => {
       try {
-        const [accs, t, r, b, fxData] = await Promise.all([
+        const [accs, t, r, b, ln, fxData] = await Promise.all([
           api.listAccounts(),
           api.listTransactions(),
           api.listRules(),
           api.listGoals(),
+          api.listLoans(),
           ensureFxRates(false),
         ]);
 
@@ -794,6 +799,7 @@ function AppCore({ session }) {
         setTxs(txsAfter);
         setRecurring(rulesAfter);
         setBudgets(b);
+        setLoans(ln);
         setFx(fxData);
         setBooted(true);
       } catch (e) {
@@ -951,6 +957,74 @@ function AppCore({ session }) {
     }
   }, [budgets, runApi, flashToast]);
 
+  /* ---------- CRUD: Loans ---------- */
+  const upsertLoan = useCallback(async (loan) => {
+    const exists = loans.some(l => l.id === loan.id);
+    const ok = await runApi(() => api.upsertLoan(loan));
+    if (ok) {
+      setLoans(exists ? loans.map(l => l.id === loan.id ? loan : l) : [...loans, loan]);
+      flashToast(exists ? 'Kredi güncellendi' : 'Kredi eklendi', 'success');
+    }
+  }, [loans, runApi, flashToast]);
+
+  const deleteLoan = useCallback(async (id) => {
+    const ok = await runApi(() => api.deleteLoan(id));
+    if (ok) {
+      setLoans(loans.filter(l => l.id !== id));
+      flashToast('Kredi silindi', 'success');
+    }
+  }, [loans, runApi, flashToast]);
+
+  // Pay the next installment of a loan: creates a gider tx + increments installments_paid.
+  const payLoanInstallment = useCallback(async (loan) => {
+    if (loan.installmentsPaid >= loan.installmentCount) {
+      flashToast('Bu kredinin tüm taksitleri ödendi', 'warn');
+      return;
+    }
+    const acc = getAccount(accounts, loan.accountId);
+    if (!acc) { flashToast('Kredi ödeme hesabı bulunamadı', 'warn'); return; }
+    const installmentNo = loan.installmentsPaid + 1;
+    const fxRate = acc.currency === 'TRY' ? 1 : (fx.rates[acc.currency] || 1);
+    const tx = {
+      id: uid('tx'),
+      type: 'gider',
+      accountId: loan.accountId,
+      category: loan.category || 'fatura',
+      amount: loan.monthlyPayment,
+      currency: acc.currency,
+      fxRate,
+      amountTRY: loan.monthlyPayment * fxRate,
+      date: todayStr(),
+      note: `${loan.name} · ${installmentNo}/${loan.installmentCount}. taksit`,
+      source: 'loan',
+      sourceId: loan.id,
+      installmentNo,
+      status: 'paid',
+      createdAt: Date.now(),
+    };
+    const nextLoan = { ...loan, installmentsPaid: installmentNo };
+
+    // Insert tx first, then update loan
+    let txOk = false;
+    try {
+      await api.bulkInsertTransactions([tx]);
+      txOk = true;
+    } catch (e) {
+      flashToast('Taksit ödenemedi: ' + (e.message || e), 'warn');
+      return;
+    }
+    if (txOk) {
+      try {
+        await api.upsertLoan(nextLoan);
+        setTxs([tx, ...txs]);
+        setLoans(loans.map(l => l.id === loan.id ? nextLoan : l));
+        flashToast(`${installmentNo}/${loan.installmentCount}. taksit ödendi`, 'success');
+      } catch (e) {
+        flashToast('Taksit eklendi ama kredi sayacı güncellenemedi: ' + (e.message || e), 'warn');
+      }
+    }
+  }, [accounts, loans, txs, fx, flashToast]);
+
   if (bootError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
@@ -997,9 +1071,13 @@ function AppCore({ session }) {
         {view.name === 'transactions' && (
           <TransactionsPage
             accounts={accounts} txs={txs} fx={fx}
+            initialStatus={view.filter || 'all'}
             onAdd={() => setModal({ kind: 'tx', payload: null })}
             onEdit={(t) => setModal({ kind: 'tx', payload: t })}
             onDelete={deleteTx}
+            onMarkPaid={async (t) => {
+              await upsertTx({ ...t, status: 'paid', date: todayStr() });
+            }}
           />
         )}
         {view.name === 'recurring' && (
@@ -1019,11 +1097,21 @@ function AppCore({ session }) {
             onDelete={deleteBudget}
           />
         )}
+        {view.name === 'loans' && (
+          <LoansPage
+            loans={loans} accounts={accounts} txs={txs}
+            onAdd={() => setModal({ kind: 'loan', payload: null })}
+            onEdit={(l) => setModal({ kind: 'loan', payload: l })}
+            onDelete={deleteLoan}
+            onPay={payLoanInstallment}
+          />
+        )}
         {view.name === 'card' && (
           <CardCyclePage
             accountId={view.accountId}
             accounts={accounts} txs={txs} fx={fx}
             onBack={() => setView({ name: 'accounts' })}
+            onPayCycle={(preset) => setModal({ kind: 'transfer', payload: preset })}
           />
         )}
         {view.name === 'settings' && (
@@ -1059,6 +1147,7 @@ function AppCore({ session }) {
       {modal?.kind === 'transfer' && (
         <TransferModal
           accounts={accounts}
+          initial={modal.payload}
           onClose={() => setModal(null)}
           onSave={async (data) => { await transferBetween(data); setModal(null); }}
         />
@@ -1076,6 +1165,14 @@ function AppCore({ session }) {
           goal={modal.payload}
           onClose={() => setModal(null)}
           onSave={async (g) => { await upsertBudget(g); setModal(null); }}
+        />
+      )}
+      {modal?.kind === 'loan' && (
+        <LoanModal
+          loan={modal.payload}
+          accounts={accounts}
+          onClose={() => setModal(null)}
+          onSave={async (l) => { await upsertLoan(l); setModal(null); }}
         />
       )}
 
@@ -1130,7 +1227,8 @@ function BottomNav({ view, setView, onQuickAdd }) {
     { id: 'dashboard', label: 'Özet', Icon: Activity },
     { id: 'accounts', label: 'Hesaplar', Icon: Wallet },
     { id: 'transactions', label: 'İşlemler', Icon: Layers },
-    { id: 'recurring', label: 'Tekrarlar', Icon: Repeat },
+    { id: 'loans', label: 'Krediler', Icon: Banknote },
+    { id: 'recurring', label: 'Tekrar', Icon: Repeat },
     { id: 'budgets', label: 'Bütçe', Icon: Target },
   ];
   return (
@@ -1240,6 +1338,7 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
     const m = new Map();
     for (const t of txs) {
       if (t.type !== 'gider') continue;
+      if (t.status === 'pending') continue;
       if (cmpDate(t.date, monthStart) < 0 || cmpDate(t.date, monthEnd) > 0) continue;
       const trySum = t.amountTRY != null ? t.amountTRY : convertToTRY(t.amount, t.currency, fx.rates);
       m.set(t.category, (m.get(t.category) || 0) + trySum);
@@ -1248,6 +1347,16 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
       .map(([id, value]) => ({ id, label: getCat('gider', id).label, value }))
       .sort((a, b) => b.value - a.value);
   }, [txs, monthStart, monthEnd, fx]);
+
+  // Pending total — shown as a quick-link badge if non-zero
+  const pendingTotal = useMemo(() => {
+    let sum = 0;
+    for (const t of txs) {
+      if (t.status !== 'pending' || t.type !== 'gider') continue;
+      sum += t.amountTRY != null ? t.amountTRY : convertToTRY(t.amount, t.currency, fx.rates);
+    }
+    return sum;
+  }, [txs, fx]);
 
   // Recent txs
   const recent = useMemo(
@@ -1291,6 +1400,21 @@ function Dashboard({ accounts, txs, recurring, budgets, fx, setView, onAdd, onTr
         <StatCard label="Bu ay gider" value={formatMoney(thisMonth.expense, 'TRY')} Icon={ArrowUpRight} tone="rose" />
         <StatCard label="Bu ay net" value={formatMoney(thisMonth.net, 'TRY', true)} Icon={TrendingUp} tone={thisMonth.net >= 0 ? 'emerald' : 'rose'} />
       </section>
+
+      {pendingTotal > 0 && (
+        <button
+          onClick={() => setView({ name: 'transactions', filter: 'pending' })}
+          className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-3 text-left hover:bg-amber-100 transition"
+        >
+          <Clock className="w-5 h-5 text-amber-700 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-amber-900">Bekleyen ödemeler</div>
+            <div className="text-xs text-amber-700">Bakiyeyi etkilemeyen, henüz ödenmemiş giderler</div>
+          </div>
+          <div className="font-semibold text-amber-900">{formatMoney(pendingTotal, 'TRY')}</div>
+          <ChevronRight className="w-4 h-4 text-amber-700" />
+        </button>
+      )}
 
       <section className="bg-white rounded-2xl border border-stone-200 p-4">
         <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
@@ -1526,18 +1650,22 @@ function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelete, onOpen }) {
    TRANSACTIONS PAGE
    ============================================================ */
 
-function TransactionsPage({ accounts, txs, fx, onAdd, onEdit, onDelete }) {
+function TransactionsPage({ accounts, txs, fx, onAdd, onEdit, onDelete, onMarkPaid, initialStatus }) {
   const [filterType, setFilterType] = useState('all');
   const [filterAccount, setFilterAccount] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterStatus, setFilterStatus] = useState(initialStatus || 'all'); // 'all' | 'pending' | 'paid'
 
   const filtered = useMemo(() => {
     return txs
       .filter(t => filterType === 'all' || t.type === filterType)
       .filter(t => filterAccount === 'all' || t.accountId === filterAccount)
       .filter(t => filterCategory === 'all' || t.category === filterCategory)
+      .filter(t => filterStatus === 'all' || (t.status || 'paid') === filterStatus)
       .sort((a, b) => cmpDate(b.date, a.date) || b.createdAt - a.createdAt);
-  }, [txs, filterType, filterAccount, filterCategory]);
+  }, [txs, filterType, filterAccount, filterCategory, filterStatus]);
+
+  const pendingCount = useMemo(() => txs.filter(t => t.status === 'pending').length, [txs]);
 
   // Group by date
   const groups = useMemo(() => {
@@ -1564,6 +1692,11 @@ function TransactionsPage({ accounts, txs, fx, onAdd, onEdit, onDelete }) {
         <Pill active={filterType === 'all'} onClick={() => { setFilterType('all'); setFilterCategory('all'); }}>Tümü</Pill>
         <Pill active={filterType === 'gelir'} onClick={() => { setFilterType('gelir'); setFilterCategory('all'); }} tone="emerald">Gelir</Pill>
         <Pill active={filterType === 'gider'} onClick={() => { setFilterType('gider'); setFilterCategory('all'); }} tone="rose">Gider</Pill>
+        {pendingCount > 0 && (
+          <Pill active={filterStatus === 'pending'} onClick={() => setFilterStatus(filterStatus === 'pending' ? 'all' : 'pending')} tone="amber">
+            <Clock className="w-3 h-3 inline -mt-0.5 mr-0.5" />Bekleyen ({pendingCount})
+          </Pill>
+        )}
         <select
           value={filterAccount}
           onChange={(e) => setFilterAccount(e.target.value)}
@@ -1597,6 +1730,15 @@ function TransactionsPage({ accounts, txs, fx, onAdd, onEdit, onDelete }) {
                 {items.map(t => (
                   <li key={t.id} className="px-4 py-2.5 hover:bg-stone-50 flex items-center gap-3 cursor-pointer" onClick={() => onEdit(t)}>
                     <TxRow tx={t} accounts={accounts} expanded />
+                    {t.status === 'pending' && onMarkPaid && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onMarkPaid(t); }}
+                        className="p-1.5 rounded hover:bg-emerald-50 text-emerald-600"
+                        title="Ödendi olarak işaretle"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); onDelete(t.id); }}
                       className="p-1.5 rounded hover:bg-rose-50 text-rose-500"
@@ -1618,25 +1760,35 @@ function TxRow({ tx, accounts, compact, expanded }) {
   const cat = getCat(tx.type, tx.category);
   const Icon = cat.Icon;
   const isIncome = tx.type === 'gelir';
+  const isPending = tx.status === 'pending';
   const acc = getAccount(accounts, tx.accountId);
   const accColor = acc?.color || '#999';
   return (
     <>
-      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: accColor + '20', color: accColor }}>
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 relative ${isPending ? 'opacity-70' : ''}`} style={{ background: accColor + '20', color: accColor }}>
         <Icon className="w-4 h-4" />
+        {isPending && (
+          <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center" title="Bekleyen ödeme">
+            <Clock className="w-2.5 h-2.5" />
+          </span>
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-stone-800 truncate">{tx.note || cat.label}</div>
+        <div className={`text-sm font-medium truncate ${isPending ? 'text-stone-500' : 'text-stone-800'}`}>
+          {tx.note || cat.label}
+        </div>
         <div className="text-xs text-stone-500 flex items-center gap-1 truncate">
           <span>{cat.label}</span>
           {acc && <span>· {acc.name}</span>}
           {tx.source === 'recurring' && <span className="text-amber-700">· tekrar</span>}
           {tx.source === 'transfer' && <span className="text-sky-700">· transfer</span>}
+          {tx.source === 'loan' && <span className="text-violet-700">· kredi</span>}
+          {isPending && <span className="text-amber-700 font-medium">· bekliyor</span>}
           {!compact && expanded && <span className="text-stone-400">· {formatDateShort(tx.date)}</span>}
         </div>
       </div>
       <div className="text-right">
-        <div className={`font-semibold ${isIncome ? 'text-emerald-700' : 'text-rose-700'}`}>
+        <div className={`font-semibold ${isPending ? 'text-stone-400 line-through' : isIncome ? 'text-emerald-700' : 'text-rose-700'}`}>
           {isIncome ? '+' : '−'}{formatNum(tx.amount)} {CURRENCIES[tx.currency]?.symbol || ''}
         </div>
         {tx.currency !== 'TRY' && (
@@ -1721,6 +1873,7 @@ function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete }) {
     const m = new Map();
     for (const t of txs) {
       if (t.type !== 'gider') continue;
+      if (t.status === 'pending') continue;
       if (cmpDate(t.date, monthStart) < 0 || cmpDate(t.date, monthEnd) > 0) continue;
       const trySum = t.amountTRY != null ? t.amountTRY : convertToTRY(t.amount, t.currency, fx.rates);
       m.set(t.category, (m.get(t.category) || 0) + trySum);
@@ -1788,10 +1941,260 @@ function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete }) {
 }
 
 /* ============================================================
+   LOANS PAGE
+   ============================================================ */
+
+function LoansPage({ loans, accounts, txs, onAdd, onEdit, onDelete, onPay }) {
+  const today = todayStr();
+
+  const enriched = useMemo(() => {
+    return loans.map(loan => {
+      const remaining = loan.installmentCount - loan.installmentsPaid;
+      const totalPaid = loan.installmentsPaid * loan.monthlyPayment;
+      const remainingAmount = remaining * loan.monthlyPayment;
+      // Estimate next due date: firstPaymentDate + installmentsPaid months
+      let nextDue = null;
+      if (remaining > 0) {
+        const [y, m, d] = loan.firstPaymentDate.split('-').map(Number);
+        const next = new Date(y, (m - 1) + loan.installmentsPaid, d);
+        nextDue = toDateStr(next);
+      }
+      const overdue = nextDue && cmpDate(nextDue, today) < 0;
+      const pct = loan.installmentCount > 0 ? (loan.installmentsPaid / loan.installmentCount) * 100 : 0;
+      return { loan, remaining, totalPaid, remainingAmount, nextDue, overdue, pct };
+    });
+  }, [loans, today]);
+
+  const totals = useMemo(() => {
+    let monthly = 0, remaining = 0;
+    for (const { loan, remainingAmount } of enriched) {
+      if (loan.installmentsPaid < loan.installmentCount) monthly += loan.monthlyPayment;
+      remaining += remainingAmount;
+    }
+    return { monthly, remaining };
+  }, [enriched]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-stone-800">Krediler</h2>
+        <button onClick={onAdd} className="px-3 py-1.5 rounded-full bg-amber-600 text-white text-sm flex items-center gap-1.5">
+          <Plus className="w-4 h-4" /> Kredi
+        </button>
+      </div>
+
+      {loans.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-2xl border border-stone-200 p-4">
+            <div className="text-xs uppercase tracking-wide text-stone-500">Aylık yük</div>
+            <div className="text-lg font-semibold text-rose-700 mt-1">{formatMoney(totals.monthly, 'TRY')}</div>
+          </div>
+          <div className="bg-white rounded-2xl border border-stone-200 p-4">
+            <div className="text-xs uppercase tracking-wide text-stone-500">Kalan toplam</div>
+            <div className="text-lg font-semibold text-stone-800 mt-1">{formatMoney(totals.remaining, 'TRY')}</div>
+          </div>
+        </div>
+      )}
+
+      {loans.length === 0 ? (
+        <EmptyState text="Henüz kredi eklenmedi. Konut, taşıt, ihtiyaç vs. kredilerini takip etmek için ekle." />
+      ) : (
+        <ul className="space-y-2">
+          {enriched.map(({ loan, remaining, totalPaid, remainingAmount, nextDue, overdue, pct }) => {
+            const acc = getAccount(accounts, loan.accountId);
+            const done = loan.installmentsPaid >= loan.installmentCount;
+            return (
+              <li key={loan.id} className="bg-white rounded-2xl border border-stone-200 p-4">
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>
+                    <Banknote className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-stone-800 truncate">{loan.name}</div>
+                    <div className="text-xs text-stone-500">
+                      {loan.lender && <>{loan.lender} · </>}
+                      {acc?.name || 'Hesap silinmiş'} · Taksit {formatMoney(loan.monthlyPayment, loan.currency)}
+                    </div>
+                    {nextDue && !done && (
+                      <div className={`text-xs mt-0.5 ${overdue ? 'text-rose-700 font-medium' : 'text-stone-600'}`}>
+                        {overdue ? 'Gecikmiş: ' : 'Sonraki: '}{formatDateLong(nextDue)}
+                      </div>
+                    )}
+                    {done && (
+                      <div className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Tamamlandı
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 -mr-1.5">
+                    <button onClick={() => onEdit(loan)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-600" title="Düzenle">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => onDelete(loan.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-600" title="Sil">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between text-xs text-stone-600">
+                  <span>{loan.installmentsPaid}/{loan.installmentCount} taksit · {formatMoney(totalPaid, loan.currency)} ödendi</span>
+                  <span className="font-medium">{formatMoney(remainingAmount, loan.currency)} kaldı</span>
+                </div>
+                <div className="mt-1.5 h-2 bg-stone-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${done ? 'bg-emerald-500' : pct > 75 ? 'bg-emerald-400' : pct > 30 ? 'bg-violet-500' : 'bg-violet-400'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+
+                {!done && (
+                  <button
+                    onClick={() => onPay(loan)}
+                    className={`mt-3 w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${overdue ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-violet-600 hover:bg-violet-700 text-white'}`}
+                  >
+                    <Check className="w-4 h-4" />
+                    {loan.installmentsPaid + 1}. taksiti öde ({formatMoney(loan.monthlyPayment, loan.currency)})
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LoanModal({ loan, accounts, onClose, onSave }) {
+  const editing = !!loan;
+  const [name, setName] = useState(loan?.name || '');
+  const [lender, setLender] = useState(loan?.lender || '');
+  const [accountId, setAccountId] = useState(loan?.accountId || accounts[0]?.id || '');
+  const [totalAmount, setTotalAmount] = useState(loan?.totalAmount?.toString() || '');
+  const [installmentCount, setInstallmentCount] = useState(loan?.installmentCount?.toString() || '12');
+  const [monthlyPayment, setMonthlyPayment] = useState(loan?.monthlyPayment?.toString() || '');
+  const [firstPaymentDate, setFirstPaymentDate] = useState(loan?.firstPaymentDate || todayStr());
+  const [installmentsPaid, setInstallmentsPaid] = useState(loan?.installmentsPaid?.toString() || '0');
+  const [category, setCategory] = useState(loan?.category || 'fatura');
+  const [currency, setCurrency] = useState(loan?.currency || (accounts.find(a => a.id === (loan?.accountId || accounts[0]?.id))?.currency || 'TRY'));
+  const [notes, setNotes] = useState(loan?.notes || '');
+
+  // Auto-calc helpers: when total + count are filled and monthly is empty, suggest it
+  const suggestedMonthly = (() => {
+    const t = parseFloat(totalAmount), c = parseInt(installmentCount, 10);
+    if (t > 0 && c > 0) return (t / c).toFixed(2);
+    return '';
+  })();
+
+  // Sync currency to account
+  useEffect(() => {
+    if (!editing) {
+      const acc = accounts.find(a => a.id === accountId);
+      if (acc) setCurrency(acc.currency);
+    }
+  }, [accountId, editing, accounts]);
+
+  const save = () => {
+    if (!name.trim() || !accountId) return;
+    const total = parseFloat(totalAmount);
+    const count = parseInt(installmentCount, 10);
+    let monthly = parseFloat(monthlyPayment);
+    if (!monthly && total > 0 && count > 0) monthly = total / count;
+    const paid = Math.max(0, Math.min(count, parseInt(installmentsPaid, 10) || 0));
+    if (!total || !count || !monthly) return;
+    const next = {
+      id: loan?.id || uid('loan'),
+      name: name.trim(),
+      lender: lender.trim() || null,
+      accountId,
+      totalAmount: total,
+      installmentCount: count,
+      monthlyPayment: monthly,
+      firstPaymentDate,
+      installmentsPaid: paid,
+      category,
+      currency,
+      notes: notes.trim(),
+      archived: loan?.archived || false,
+      createdAt: loan?.createdAt || Date.now(),
+    };
+    onSave(next);
+  };
+
+  const expenseCats = CATS.gider;
+
+  return (
+    <ModalShell
+      title={editing ? 'Krediyi düzenle' : 'Yeni kredi'}
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <button onClick={onClose} className="ml-auto px-3 py-2 rounded-lg bg-stone-100 text-sm">Vazgeç</button>
+          <button onClick={save} className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm">Kaydet</button>
+        </div>
+      }
+    >
+      <Field label="Kredi adı">
+        <input value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" placeholder="Örn. Konut Kredisi" />
+      </Field>
+
+      <Field label="Kredi veren (opsiyonel)">
+        <input value={lender} onChange={e => setLender(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" placeholder="Örn. Garanti BBVA" />
+      </Field>
+
+      <Field label="Taksit ödeme hesabı">
+        <select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm">
+          {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Toplam tutar (faiz dahil)">
+          <input type="number" step="0.01" value={totalAmount} onChange={e => setTotalAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" />
+        </Field>
+        <Field label="Taksit sayısı">
+          <input type="number" min="1" max="360" value={installmentCount} onChange={e => setInstallmentCount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" />
+        </Field>
+      </div>
+
+      <Field label="Aylık taksit" hint={suggestedMonthly && !monthlyPayment ? `Tahmini: ${suggestedMonthly}` : ''}>
+        <input
+          type="number"
+          step="0.01"
+          value={monthlyPayment}
+          onChange={e => setMonthlyPayment(e.target.value)}
+          placeholder={suggestedMonthly || '0,00'}
+          className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm"
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="İlk taksit tarihi">
+          <input type="date" value={firstPaymentDate} onChange={e => setFirstPaymentDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" />
+        </Field>
+        <Field label="Ödenmiş taksit sayısı">
+          <input type="number" min="0" max={installmentCount || 999} value={installmentsPaid} onChange={e => setInstallmentsPaid(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" />
+        </Field>
+      </div>
+
+      <Field label="Taksit kategorisi (işlem oluşurken)">
+        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm">
+          {expenseCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </Field>
+
+      <Field label="Notlar (opsiyonel)">
+        <input value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" />
+      </Field>
+    </ModalShell>
+  );
+}
+
+/* ============================================================
    CARD CYCLE PAGE
    ============================================================ */
 
-function CardCyclePage({ accountId, accounts, txs, fx, onBack }) {
+function CardCyclePage({ accountId, accounts, txs, fx, onBack, onPayCycle }) {
   const card = getAccount(accounts, accountId);
   const [offset, setOffset] = useState(0);
 
@@ -1813,7 +2216,10 @@ function CardCyclePage({ accountId, accounts, txs, fx, onBack }) {
   }
 
   const cycle = getCycleByOffset(card, offset);
-  const cycleTxs = useMemo(() => txs.filter(t => t.accountId === card.id && txInCycle(t, cycle)), [txs, card.id, cycle]);
+  const cycleTxs = useMemo(
+    () => txs.filter(t => t.accountId === card.id && t.status !== 'pending' && txInCycle(t, cycle)),
+    [txs, card.id, cycle]
+  );
   const totalSpent = cycleTxs
     .filter(t => t.type === 'gider')
     .reduce((s, t) => s + t.amount, 0);
@@ -1860,6 +2266,21 @@ function CardCyclePage({ accountId, accounts, txs, fx, onBack }) {
           Dönem: {formatDateShort(cycle.start)} – {formatDateShort(cycle.end)}
           {cycle.dueDate && <> · Son ödeme: {formatDateLong(cycle.dueDate)}</>}
         </div>
+
+        {(totalSpent - totalPaid) > 0 && (
+          <button
+            onClick={() => onPayCycle?.({
+              toId: card.id,
+              amount: Number((totalSpent - totalPaid).toFixed(2)),
+              note: `Kart ödemesi · ${cycle.label}`,
+              title: `${card.name} — ekstreyi öde`,
+            })}
+            className="mt-4 w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium flex items-center justify-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+            Bu ekstreyi öde ({formatMoney(totalSpent - totalPaid, card.currency)})
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -1982,6 +2403,7 @@ function TxModal({ tx, accounts, fx, onClose, onSave, onDelete }) {
   const [currency, setCurrency] = useState(tx?.currency || (accounts[0]?.currency || 'TRY'));
   const [date, setDate] = useState(tx?.date || todayStr());
   const [note, setNote] = useState(tx?.note || '');
+  const [pending, setPending] = useState(tx?.status === 'pending');
 
   useEffect(() => {
     // Default category when type flips
@@ -2016,6 +2438,8 @@ function TxModal({ tx, accounts, fx, onClose, onSave, onDelete }) {
       source: tx?.source || 'manual',
       sourceId: tx?.sourceId,
       transferId: tx?.transferId,
+      status: pending ? 'pending' : 'paid',
+      installmentNo: tx?.installmentNo,
       createdAt: tx?.createdAt || Date.now(),
     };
     onSave(next);
@@ -2090,6 +2514,20 @@ function TxModal({ tx, accounts, fx, onClose, onSave, onDelete }) {
       <Field label="Açıklama (opsiyonel)">
         <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm" placeholder="Örn. Migros alışveriş" />
       </Field>
+
+      <button
+        type="button"
+        onClick={() => setPending(p => !p)}
+        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm transition ${pending ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100'}`}
+      >
+        {pending ? <Clock className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+        <span className="flex-1 text-left">
+          {pending ? 'Bekleyen ödeme (bakiyeyi etkilemez)' : 'Ödendi (bakiyeye yansır)'}
+        </span>
+        <span className={`text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded ${pending ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-700'}`}>
+          {pending ? 'bekliyor' : 'ödendi'}
+        </span>
+      </button>
 
       {currency !== 'TRY' && amount && (
         <div className="text-xs text-stone-500 bg-stone-50 rounded-lg p-2">
@@ -2202,12 +2640,17 @@ function AccountModal({ account, onClose, onSave }) {
   );
 }
 
-function TransferModal({ accounts, onClose, onSave }) {
-  const [fromId, setFromId] = useState(accounts[0]?.id || '');
-  const [toId, setToId] = useState(accounts[1]?.id || accounts[0]?.id || '');
-  const [amount, setAmount] = useState('');
+function TransferModal({ accounts, initial, onClose, onSave }) {
+  // initial: { toId?, fromId?, amount?, note?, title? } — used for "Pay credit card cycle" etc.
+  const defaultFrom = initial?.fromId
+    || accounts.find(a => a.type !== 'kredi_karti' && a.id !== initial?.toId)?.id
+    || accounts[0]?.id || '';
+  const defaultTo = initial?.toId || accounts[1]?.id || accounts[0]?.id || '';
+  const [fromId, setFromId] = useState(defaultFrom);
+  const [toId, setToId] = useState(defaultTo);
+  const [amount, setAmount] = useState(initial?.amount != null ? String(initial.amount) : '');
   const [date, setDate] = useState(todayStr());
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(initial?.note || '');
 
   const save = () => {
     const amt = parseFloat(amount);
@@ -2217,7 +2660,7 @@ function TransferModal({ accounts, onClose, onSave }) {
 
   return (
     <ModalShell
-      title="Hesaplar arası transfer"
+      title={initial?.title || 'Hesaplar arası transfer'}
       onClose={onClose}
       footer={
         <div className="flex gap-2">

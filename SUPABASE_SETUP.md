@@ -20,6 +20,14 @@ Bu uygulamayı Supabase ile çalıştırmak için yapılacaklar.
 
 Bu adım 4 tabloyu (accounts, transactions, recurring_rules, budget_goals), her birinin index'lerini ve RLS politikalarını kurar.
 
+## 2.1. Migration'ları çalıştır (ek özellikler için)
+
+Şema değişikliklerini içeren ek SQL dosyaları `supabase/migrations/` altındadır. **Her birini sırayla bir kez** SQL Editor'de çalıştır:
+
+1. [`supabase/migrations/002_payment_features.sql`](supabase/migrations/002_payment_features.sql) — `transactions.status` (bekleyen/ödendi), `loans` tablosu (kredi/taksit takibi), `transactions.installment_no`.
+
+Migration dosyaları **additive**'dir (mevcut veriyi silmez), tekrar tekrar çalıştırılabilir.
+
 ## 3. Auth ayarları (magic link için)
 
 1. Sol menüden **Authentication** → **URL Configuration**
