@@ -39,13 +39,13 @@ export default function TransactionsPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-stone-800">İşlemler</h2>
+        <h2 className="text-xl font-bold text-stone-900">İşlemler</h2>
         <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> İşlem
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-3 flex flex-wrap gap-2 items-center text-sm">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-3 flex flex-wrap gap-2 items-center text-sm">
         <Pill active={filterType === 'all'} onClick={() => { setFilterType('all'); setFilterCategory('all'); }}>Tümü</Pill>
         <Pill active={filterType === 'gelir'} onClick={() => { setFilterType('gelir'); setFilterCategory('all'); }} tone="emerald">Gelir</Pill>
         <Pill active={filterType === 'gider'} onClick={() => { setFilterType('gider'); setFilterCategory('all'); }} tone="rose">Gider</Pill>
@@ -79,7 +79,7 @@ export default function TransactionsPage({
       ) : (
         <div className="space-y-4">
           {groups.map(([date, items]) => (
-            <div key={date} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+            <div key={date} className="bg-white rounded-2xl shadow-card border border-stone-100 overflow-hidden">
               <div className="px-4 py-2 text-xs uppercase tracking-wide text-stone-500 bg-stone-50 border-b border-stone-100">
                 {formatDateLong(date)}
               </div>

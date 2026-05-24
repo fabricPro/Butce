@@ -55,7 +55,7 @@ export default function ModalShell({ title, onClose, children, footer }) {
     >
       <div
         ref={sheetRef}
-        className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-xl max-h-[100svh] sm:max-h-[90vh] flex flex-col animate-[slideup_200ms_cubic-bezier(.2,.8,.2,1)]"
+        className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-modal max-h-[100svh] sm:max-h-[90vh] flex flex-col animate-[slideup_200ms_cubic-bezier(.2,.8,.2,1)]"
         style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}
       >
         {/* Mobile drag handle + swipe-to-dismiss zone */}

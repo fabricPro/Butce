@@ -51,7 +51,7 @@ export default function CardCyclePage({ accountId, accounts, txs, onBack, onPayC
         <ChevronLeft className="w-4 h-4" /> Hesaplar
       </button>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-5">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: card.color + '20', color: card.color }}>
             <CreditCard className="w-5 h-5" />
@@ -117,7 +117,7 @@ export default function CardCyclePage({ accountId, accounts, txs, onBack, onPayC
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 overflow-hidden">
         {cycleTxs.length === 0 ? (
           <div className="text-sm text-stone-500 py-8 text-center">Bu dönemde işlem yok.</div>
         ) : (

@@ -36,7 +36,7 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-stone-800">Krediler</h2>
+        <h2 className="text-xl font-bold text-stone-900">Krediler</h2>
         <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Kredi
         </button>
@@ -44,13 +44,13 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
 
       {loans.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-2xl border border-stone-200 p-4">
+          <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
             <div className="text-xs uppercase tracking-wide text-stone-500">Aylık yük</div>
             <div className="text-lg font-semibold text-rose-700 mt-1">{formatMoney(totals.monthly, 'TRY')}</div>
           </div>
-          <div className="bg-white rounded-2xl border border-stone-200 p-4">
+          <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
             <div className="text-xs uppercase tracking-wide text-stone-500">Kalan toplam</div>
-            <div className="text-lg font-semibold text-stone-800 mt-1">{formatMoney(totals.remaining, 'TRY')}</div>
+            <div className="text-xl font-bold text-stone-900 mt-1">{formatMoney(totals.remaining, 'TRY')}</div>
           </div>
         </div>
       )}
@@ -63,7 +63,7 @@ export default function LoansPage({ loans, accounts, onAdd, onEdit, onDelete, on
             const acc = getAccount(accounts, loan.accountId);
             const done = loan.installmentsPaid >= loan.installmentCount;
             return (
-              <li key={loan.id} className="bg-white rounded-2xl border border-stone-200 p-4">
+              <li key={loan.id} className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
                 <div className="flex items-start gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>
                     <Banknote className="w-4 h-4" />

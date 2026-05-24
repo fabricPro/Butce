@@ -5,6 +5,17 @@
 html, body, #root { height: 100%; }
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard-accessible focus ring — only visible when navigating via
+   keyboard, never on mouse click. Uses the brand amber so it matches
+   the rest of the UI. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid rgb(217 119 6);   /* amber-600 */
+  outline-offset: 2px;
+  border-radius: inherit;
 }
 
 /* Allow content to extend into iPhone safe areas; per-component padding

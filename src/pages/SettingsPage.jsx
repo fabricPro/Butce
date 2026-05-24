@@ -9,9 +9,9 @@ export default function SettingsPage({ fx, session, onRefresh, onManual, onLogou
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-stone-800">Ayarlar</h2>
+      <h2 className="text-xl font-bold text-stone-900">Ayarlar</h2>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-2">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4 space-y-2">
         <div className="flex items-center gap-2">
           <Mail className="w-4 h-4 text-stone-500" />
           <div className="font-medium text-stone-800">Hesap</div>
@@ -25,7 +25,7 @@ export default function SettingsPage({ fx, session, onRefresh, onManual, onLogou
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4 space-y-3">
         <div className="flex items-center gap-2">
           <Globe className="w-4 h-4 text-stone-500" />
           <div className="font-medium text-stone-800">Döviz Kurları</div>
@@ -56,7 +56,7 @@ export default function SettingsPage({ fx, session, onRefresh, onManual, onLogou
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 text-xs text-stone-600 space-y-2">
+      <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4 text-xs text-stone-600 space-y-2">
         <div className="font-medium text-stone-800 text-sm">Veri</div>
         <p>Veriler Supabase bulutunda tutulur, RLS ile sadece sen erişebilirsin. Aynı hesapla farklı cihazlardan giriş yaparak senkron tutabilirsin.</p>
       </div>

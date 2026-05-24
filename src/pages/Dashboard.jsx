@@ -116,8 +116,8 @@ export default function Dashboard({ accounts, txs, recurring, fx, setView, onAdd
     <div className="space-y-6">
       <section className="rounded-2xl bg-gradient-to-br from-amber-700 to-amber-600 text-white p-5 shadow">
         <div className="text-xs uppercase tracking-wide text-amber-100/80">Toplam Bakiye</div>
-        <div className="text-3xl font-semibold mt-1">{formatMoney(totalTRY, 'TRY')}</div>
-        <div className="mt-1 text-xs text-amber-100/80">
+        <div className="text-3xl font-bold mt-1 tabular-nums">{formatMoney(totalTRY, 'TRY')}</div>
+        <div className="mt-1 text-xs text-amber-100/80 tabular-nums">
           30 gün sonra tahmin: {formatMoney(forecast30, 'TRY')}
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -157,7 +157,7 @@ export default function Dashboard({ accounts, txs, recurring, fx, setView, onAdd
         </button>
       )}
 
-      <section className="bg-white rounded-2xl border border-stone-200 p-4">
+      <section className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
         <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <div className="font-semibold text-stone-800">
             {chartView === 'past' ? 'Son 6 ay' : chartView === 'future' ? 'Gelecek 6 ay' : 'Son 6 ay · Tahmin 6 ay'}
@@ -258,7 +258,7 @@ export default function Dashboard({ accounts, txs, recurring, fx, setView, onAdd
       </section>
 
       <section className="grid md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-stone-200 p-4">
+        <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
           <div className="font-semibold mb-2 text-stone-800">Kategori dağılımı (bu ay)</div>
           {catBreakdown.length === 0 ? (
             <div className="text-sm text-stone-500 py-8 text-center">Bu ay henüz gider yok.</div>
@@ -287,7 +287,7 @@ export default function Dashboard({ accounts, txs, recurring, fx, setView, onAdd
           )}
         </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200 p-4">
+        <div className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="font-semibold text-stone-800">Son işlemler</div>
             <button onClick={() => setView({ name: 'transactions' })} className="text-xs text-amber-700 hover:underline">Tümü</button>

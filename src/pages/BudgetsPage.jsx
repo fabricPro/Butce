@@ -27,7 +27,7 @@ export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-stone-800">Aylık Bütçe Hedefleri</h2>
+        <h2 className="text-xl font-bold text-stone-900">Aylık Bütçe Hedefleri</h2>
         <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Hedef
         </button>
@@ -43,7 +43,7 @@ export default function BudgetsPage({ budgets, txs, fx, onAdd, onEdit, onDelete 
             const pct = g.limit > 0 ? Math.min(100, (spent / g.limit) * 100) : 0;
             const over = spent > g.limit;
             return (
-              <li key={g.id} className="bg-white rounded-2xl border border-stone-200 p-4">
+              <li key={g.id} className="bg-white rounded-2xl shadow-card border border-stone-100 p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center">
                     <cat.Icon className="w-4 h-4" />

@@ -9,7 +9,7 @@ export default function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelet
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-stone-800">Hesaplar</h2>
+        <h2 className="text-xl font-bold text-stone-900">Hesaplar</h2>
         <button onClick={onAdd} className="min-h-[40px] px-3.5 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-sm flex items-center gap-1.5 transition-colors">
           <Plus className="w-4 h-4" /> Hesap
         </button>
@@ -25,7 +25,7 @@ export default function AccountsPage({ accounts, txs, fx, onAdd, onEdit, onDelet
             const tryEq = getAccountBalanceTRY(a, txs, fx.rates);
             const isCard = a.type === 'kredi_karti';
             return (
-              <li key={a.id} className="bg-white rounded-2xl border border-stone-200 p-4 flex items-center gap-3">
+              <li key={a.id} className="bg-white rounded-2xl shadow-card border border-stone-100 p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: a.color + '20', color: a.color }}>
                   <Icon className="w-5 h-5" />
                 </div>
